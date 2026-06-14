@@ -9,7 +9,8 @@
 	Press Right Ctrl to toggle the menu.
 ]]
 
-local VibeUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/RealSlimShady2000/VibeUI/main/VibeUI.luau"))()
+-- cache-bust the library fetch so the demo always pulls the latest VibeUI
+local VibeUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/RealSlimShady2000/VibeUI/main/VibeUI.luau?v=" .. tostring(tick())))()
 
 local Window = VibeUI:Window({
 	Title   = "VibeUI",
