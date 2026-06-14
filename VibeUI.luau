@@ -34,7 +34,6 @@ local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local TweenService     = game:GetService("TweenService")
 local HttpService      = game:GetService("HttpService")
-local GuiService       = game:GetService("GuiService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -476,11 +475,11 @@ local function Corner(parent: Instance, radius: number?)
 	Create("UICorner", { Parent = parent, CornerRadius = UDim.new(0, radius or 4) })
 end
 
--- GetMouseLocation() is GUI-inset-adjusted; AbsolutePosition is full-screen.
--- Add the inset so mouse maths line up with GUI coordinates (fixes the ~36px
--- vertical drift on the colorpicker palette and the custom cursor).
+-- The Holder ScreenGui uses IgnoreGuiInset = false, so AbsolutePosition shares
+-- the same coordinate space as GetMouseLocation() (both full-screen) — no inset
+-- adjustment needed. Verified live: GetMouseLocation == AbsolutePosition there.
 local function MousePos(): Vector2
-	return UserInputService:GetMouseLocation() + GuiService:GetGuiInset()
+	return UserInputService:GetMouseLocation()
 end
 
 local function isMouseOver(gui: Instance): boolean
@@ -611,7 +610,7 @@ local Holder = Create("ScreenGui", {
 	Parent = Parent,
 	Name = "\0",
 	ZIndexBehavior = Enum.ZIndexBehavior.Global,
-	IgnoreGuiInset = true,
+	IgnoreGuiInset = false, -- AbsolutePosition then shares GetMouseLocation's space
 	DisplayOrder = 999,
 	ResetOnSpawn = false,
 })
