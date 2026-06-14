@@ -1557,23 +1557,23 @@ function Components.Colorpicker(data)
 	Create("UIPadding", { Parent = win, PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8),
 		PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
 
-	-- palette (saturation/value)
+	-- palette: hue base + saturation (white→clear, left→right) + value (clear→black, top→bottom).
+	-- Built from gradients (not images) so orientation always matches the sat=x / val=1-y math.
 	local palette = Create("TextButton", { Parent = win, Text = "", AutoButtonColor = false,
 		Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, -28, 1, -28), BorderSizePixel = 2,
 		BorderColor3 = Color3.fromRGB(12, 12, 12), BackgroundColor3 = Color3.fromRGB(255, 0, 0), ZIndex = 61 })
-	local satImg = Library:GetImage("Saturation")
-	local valImg = Library:GetImage("Value")
-	if satImg ~= "" then
-		Create("ImageLabel", { Parent = palette, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
-			Image = satImg, ZIndex = 62 })
-	end
-	if valImg ~= "" then
-		Create("ImageLabel", { Parent = palette, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
-			Image = valImg, ZIndex = 63 })
-	end
-	local paletteDot = Create("Frame", { Parent = palette, Size = UDim2.fromOffset(4, 4), ZIndex = 64,
+	local satOverlay = Create("Frame", { Parent = palette, BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, ZIndex = 62 })
+	Create("UIGradient", { Parent = satOverlay, Rotation = 0,
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }) })
+	local valOverlay = Create("Frame", { Parent = palette, BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		Size = UDim2.fromScale(1, 1), BorderSizePixel = 0, ZIndex = 63 })
+	Create("UIGradient", { Parent = valOverlay, Rotation = 90,
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) }) })
+	local paletteDot = Create("Frame", { Parent = palette, Size = UDim2.fromOffset(6, 6), ZIndex = 64,
 		BorderColor3 = Color3.fromRGB(0, 0, 0), BorderSizePixel = 1, BackgroundColor3 = Color3.fromRGB(255, 255, 255),
 		AnchorPoint = Vector2.new(0.5, 0.5) })
+	Create("UICorner", { Parent = paletteDot, CornerRadius = UDim.new(1, 0) })
 
 	-- hue strip
 	local hue = Create("TextButton", { Parent = win, Text = "", AutoButtonColor = false,
@@ -2091,15 +2091,17 @@ function Library:Window(data: WindowConfig?)
 		local btn = Create("TextButton", { Parent = topHolder, Text = "", AutoButtonColor = false,
 			Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
 			BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 0,
-			BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(25, 30, 26),
-			ThemeTag = { BackgroundColor3 = "Page Background", BorderColor3 = "Border" } })
-		Corner(btn)
-		Create("UIPadding", { Parent = btn, PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) })
-		local liner = Create("Frame", { Parent = btn, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0),
-			Size = UDim2.new(1, -6, 0, 2), BorderSizePixel = 0, BackgroundTransparency = 1,
+			BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(30, 36, 31),
+			ThemeTag = { BackgroundColor3 = "Element", BorderColor3 = "Border" } })
+		Corner(btn, 4)
+		Create("UIPadding", { Parent = btn, PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14) })
+		-- bold, rounded accent underline (more prominent active tab)
+		local liner = Create("Frame", { Parent = btn, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 1),
+			Size = UDim2.new(1, -8, 0, 3), BorderSizePixel = 0, BackgroundTransparency = 1,
 			BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
+		Create("UICorner", { Parent = liner, CornerRadius = UDim.new(1, 0) })
 		local label = MakeText(btn, name, { AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 0, 0, 15),
+			Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 0, 0, 15), FontFace = Font.fromEnum(Enum.Font.GothamMedium),
 			TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.X })
 		return { btn = btn, liner = liner, label = label, side = false }
 	end
@@ -2135,7 +2137,13 @@ function Library:Window(data: WindowConfig?)
 				Tween.To(bd.btn, { BackgroundTransparency = btnTarget })
 				Tween.SetShown(bd.btn, "BackgroundTransparency", btnTarget)
 				Tween.To(bd.liner, { BackgroundTransparency = on and 0 or 1 })
-				if bd.side then Tween.To(bd.label, { Position = UDim2.new(0, on and 13 or 8, 0.5, 0) }) end
+				if bd.side then
+					Tween.To(bd.label, { Position = UDim2.new(0, on and 13 or 8, 0.5, 0) })
+				else
+					-- top tab: vibrant accent label when active
+					Theme.Retag(bd.label, { TextColor3 = on and "Accent" or "Text" })
+					Tween.To(bd.label, { TextColor3 = on and Theme.Values.Accent or Theme.Values.Text })
+				end
 			end
 			if on then window.CurrentTab = tab end
 			Tween.Fade(page, on, window.FadeTime)
