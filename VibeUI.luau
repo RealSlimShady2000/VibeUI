@@ -1454,9 +1454,20 @@ function Components.Dropdown(data)
 		if active then
 			Theme.Retag(opt.Button, { TextColor3 = "Accent" })
 			Tween.To(opt.Button, { TextColor3 = Theme.Values.Accent, BackgroundTransparency = 0.88 })
+			if opt.Indicator then
+				opt.Indicator.Text = "✓"
+				opt.Indicator.TextColor3 = Color3.fromRGB(120, 230, 150)
+				opt.Indicator.TextTransparency = 0
+			end
 		else
 			Theme.Retag(opt.Button, { TextColor3 = "Text" })
 			Tween.To(opt.Button, { TextColor3 = Theme.Values.Text, BackgroundTransparency = 1 })
+			if opt.Indicator then
+				-- show a red × only for multi-select (where exclusion is meaningful)
+				opt.Indicator.Text = data.Multi and "×" or ""
+				opt.Indicator.TextColor3 = Color3.fromRGB(235, 90, 90)
+				opt.Indicator.TextTransparency = data.Multi and 0.15 or 1
+			end
 		end
 	end
 
@@ -1489,9 +1500,13 @@ function Components.Dropdown(data)
 			TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 20), ZIndex = 51,
 			TextColor3 = Color3.fromRGB(235, 235, 235), BackgroundColor3 = Color3.fromRGB(37, 42, 45),
 			ThemeTag = { TextColor3 = "Text", BackgroundColor3 = "Hovered Element" } })
-		Create("UIPadding", { Parent = btn, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
+		Create("UIPadding", { Parent = btn, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 24) })
 		Corner(btn, 3)
-		local opt = { Button = btn, Name = name, Selected = false }
+		-- selected/unselected indicator: green ✓ when picked, red × when not (multi)
+		local indicator = Create("TextLabel", { Parent = btn, BackgroundTransparency = 1, ZIndex = 52,
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(14, 14),
+			FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 13, Text = "", TextColor3 = Color3.fromRGB(245, 110, 110) })
+		local opt = { Button = btn, Name = name, Selected = false, Indicator = indicator }
 		maid:GiveTask(btn.MouseEnter:Connect(function()
 			if not opt.Selected then Tween.To(btn, { BackgroundTransparency = 0.5 }) end
 		end))
@@ -1521,6 +1536,7 @@ function Components.Dropdown(data)
 			end
 		end))
 		self.Options[name] = opt
+		toggleOption(opt, false) -- initial indicator state (× for multi, none for single)
 		return opt
 	end
 
