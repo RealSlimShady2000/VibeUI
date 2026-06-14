@@ -53,6 +53,7 @@ The menu toggles with **Right Ctrl** by default (configurable in Settings).
 | `VibeUI:SetOutlines(bool)` | Toggle element border outlines for a flatter look. Also a Theme toggle. |
 | `VibeUI:SetScale(n)` | Global UI scale, `0.5`–`2`. Also a Settings slider. |
 | `VibeUI:InventoryViewer()` | Draggable inventory panel: `:SetPlayer/:SetHealth/:SetDistance/:AddTool(name,img?)/:RemoveAll/:SetVisibility`. |
+| `VibeUI:UserProfile(opts)` | Discord-style profile card (avatar + name + subtitle). `opts`: `DisplayName/Username/Status/Image/Position`. Methods: `:SetDisplayName/:SetUsername/:SetStatus/:SetAvatar/:SetVisibility`. Auto-fills from the local player. |
 | `VibeUI:Loader(opts)` | Loading screen. See **Overlays** below. |
 | `VibeUI:MessageBox(opts)` | Modal message box with buttons. See **Overlays**. |
 | `VibeUI:KeySystem(opts)` | Key gate with a `Validate` hook for auth/whitelisting. See **Overlays**. |

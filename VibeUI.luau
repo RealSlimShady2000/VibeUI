@@ -2471,6 +2471,67 @@ function Library:InventoryViewer()
 	return viewer
 end
 
+--- A Discord-style user profile card (avatar + display name + subtitle).
+--- All fields default to the local player and are overridable. opts:
+---   DisplayName, Username, Status, Image (rbxassetid/url), Position (UDim2).
+--- Returns: :SetDisplayName / :SetUsername / :SetStatus / :SetAvatar / :SetVisibility.
+function Library:UserProfile(opts)
+	opts = opts or {}
+	local profile = {}
+	local frame = Create("Frame", { Parent = Holder, AnchorPoint = Vector2.new(0, 1),
+		Position = opts.Position or UDim2.new(0, 12, 1, -12), AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 52), BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2,
+		BackgroundColor3 = Color3.fromRGB(14, 17, 15), ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
+	Stroke(frame, "Outline"); Corner(frame, 6); trackScale(frame)
+	MakeDraggable(frame, frame, LibMaid)
+	Create("Frame", { Parent = frame, AnchorPoint = Vector2.new(0, 0), Position = UDim2.new(0, 0, 0, 0),
+		Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(202, 243, 255),
+		ThemeTag = { BackgroundColor3 = "Accent" } })
+	Create("UIPadding", { Parent = frame, PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7),
+		PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 12) })
+	Create("UIListLayout", { Parent = frame, FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 9), SortOrder = Enum.SortOrder.LayoutOrder })
+
+	local avatarHolder = Create("Frame", { Parent = frame, Size = UDim2.fromOffset(38, 38), LayoutOrder = 0,
+		BackgroundColor3 = Color3.fromRGB(20, 24, 21), BorderSizePixel = 0, ThemeTag = { BackgroundColor3 = "Inline" } })
+	Create("UICorner", { Parent = avatarHolder, CornerRadius = UDim.new(1, 0) })
+	local avatar = Create("ImageLabel", { Parent = avatarHolder, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
+		Image = "", ScaleType = Enum.ScaleType.Crop })
+	Create("UICorner", { Parent = avatar, CornerRadius = UDim.new(1, 0) })
+
+	local textCol = Create("Frame", { Parent = frame, BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 38), LayoutOrder = 1 })
+	Create("UIListLayout", { Parent = textCol, VerticalAlignment = Enum.VerticalAlignment.Center,
+		Padding = UDim.new(0, 1), SortOrder = Enum.SortOrder.LayoutOrder })
+	local nameLabel = MakeText(textCol, opts.DisplayName or LocalPlayer.DisplayName, {
+		Size = UDim2.new(0, 0, 0, 16), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 0,
+		FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left })
+	local subLabel = MakeText(textCol, opts.Status or opts.Username or ("@" .. LocalPlayer.Name), {
+		Size = UDim2.new(0, 0, 0, 13), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 1, TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(185, 185, 185),
+		ThemeTag = { TextColor3 = "Placeholder Text" } })
+
+	function profile:SetDisplayName(t) nameLabel.Text = tostring(t) end
+	function profile:SetUsername(t) subLabel.Text = tostring(t) end
+	function profile:SetStatus(t) subLabel.Text = tostring(t) end
+	function profile:SetVisibility(b) frame.Visible = b end
+	function profile:SetAvatar(img)
+		avatar.Image = tostring(img):match("^rbxassetid://") and img or ("rbxassetid://" .. tostring(img))
+	end
+
+	if opts.Image and opts.Image ~= "" then
+		profile:SetAvatar(opts.Image)
+	else
+		task.spawn(function()
+			local ok, img = pcall(function()
+				return (Players :: any):GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+			end)
+			if ok and img then avatar.Image = img end
+		end)
+	end
+	return profile
+end
+
 local NOTIF_TYPES = {
 	info    = { color = function() return Theme.Values.Accent end,   glyph = "i" },
 	success = { color = function() return Color3.fromRGB(120, 230, 150) end, glyph = "✓" },

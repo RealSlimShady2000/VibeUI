@@ -21,6 +21,8 @@ local Window = VibeUI:Window({
 
 local Watermark   = VibeUI:Watermark("VibeUI  •  " .. game:GetService("Players").LocalPlayer.Name)
 local KeybindList = VibeUI:KeybindList()
+-- Discord-style profile card (auto-fills from the local player; all fields optional)
+local Profile     = VibeUI:UserProfile({ Status = "Vibing" })
 
 --========================================================================= Combat
 local Combat = Window:Tab({ Name = "Combat", Columns = 2 })
