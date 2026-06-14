@@ -907,10 +907,18 @@ local Tooltip = {} do
 	Corner(frame, 4)
 	local label = Create("TextLabel", {
 		Parent = frame, BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY,
-		FontFace = GetFont(), TextSize = 13, ZIndex = 5001,
+		FontFace = GetFont(), TextSize = 13, ZIndex = 5001, RichText = true,
 		Text = "", TextColor3 = Color3.fromRGB(235, 235, 235),
 		ThemeTag = { TextColor3 = "Text" },
 	})
+
+	-- coloured [KIND] prefix for info markers
+	local TOOLTIP_KINDS = {
+		info    = { c = Color3.fromRGB(110, 170, 245), t = "INFO" },
+		tip     = { c = Color3.fromRGB(120, 230, 150), t = "TIP" },
+		warning = { c = Color3.fromRGB(245, 170, 90),  t = "WARNING" },
+		error   = { c = Color3.fromRGB(245, 110, 110), t = "ERROR" },
+	}
 
 	local active = false
 	-- follow the pointer only while a tooltip is shown and the mouse moves
@@ -921,9 +929,16 @@ local Tooltip = {} do
 		end
 	end))
 
-	function Tooltip.Bind(gui: GuiObject, text: string, maid)
+	function Tooltip.Bind(gui: GuiObject, text: string, maid, kind: string?)
+		local k = kind and TOOLTIP_KINDS[kind]
+		local display = text
+		if k then
+			local c = k.c
+			display = ("<b><font color=\"rgb(%d,%d,%d)\">[%s]</font></b> %s")
+				:format(math.floor(c.R * 255), math.floor(c.G * 255), math.floor(c.B * 255), k.t, text)
+		end
 		maid:GiveTask(gui.MouseEnter:Connect(function()
-			label.Text = text
+			label.Text = display
 			local m = MousePos()
 			frame.Position = UDim2.fromOffset(m.X + 14, m.Y + 2) -- place immediately
 			frame.Visible = true
@@ -1042,10 +1057,10 @@ end
 
 ----------------------------------------------------------------- InfoMarker ---
 local MARKER_TYPES = {
-	info    = { color = function() return Theme.Values.Accent end,       glyph = "i", themed = true },
-	tip     = { color = function() return Theme.Values.Accent end,       glyph = "i", themed = true },
-	warning = { color = function() return Color3.fromRGB(245, 205, 110) end, glyph = "!" },
-	error   = { color = function() return Color3.fromRGB(245, 120, 120) end, glyph = "!" },
+	info    = { color = function() return Color3.fromRGB(110, 170, 245) end, glyph = "i" },
+	tip     = { color = function() return Color3.fromRGB(120, 230, 150) end, glyph = "i" },
+	warning = { color = function() return Color3.fromRGB(245, 170, 90) end,  glyph = "!" },
+	error   = { color = function() return Color3.fromRGB(245, 110, 110) end, glyph = "!" },
 }
 
 -- A circular i / ! marker that shows a tooltip on hover (tips, warnings…).
@@ -1061,7 +1076,7 @@ function Components.InfoMarker(parent, text: string, kind: string?, maid)
 		FontFace = Font.fromEnum(Enum.Font.GothamBold), Text = data.glyph, TextSize = 12,
 		TextYAlignment = Enum.TextYAlignment.Center, TextXAlignment = Enum.TextXAlignment.Center,
 		TextColor3 = Color3.fromRGB(14, 17, 15), ThemeTag = { TextColor3 = "Background" } })
-	if text and text ~= "" then Tooltip.Bind(marker, text, maid) end
+	if text and text ~= "" then Tooltip.Bind(marker, text, maid, kind or "info") end
 	return marker
 end
 
