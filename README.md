@@ -51,6 +51,8 @@ The menu toggles with **Right Ctrl** by default (configurable in Settings).
 | `VibeUI:SetNotificationSide(side)` | `"BottomRight"`/`"BottomLeft"`/`"TopRight"`/`"TopLeft"`. |
 | `VibeUI:SetTransparency(alpha)` | Make the whole UI see-through. `0` = opaque … `1` = invisible. Also a Settings slider. |
 | `VibeUI:SetOutlines(bool)` | Toggle element border outlines for a flatter look. Also a Theme toggle. |
+| `VibeUI:SetScale(n)` | Global UI scale, `0.5`–`2`. Also a Settings slider. |
+| `VibeUI:InventoryViewer()` | Draggable inventory panel: `:SetPlayer/:SetHealth/:SetDistance/:AddTool(name,img?)/:RemoveAll/:SetVisibility`. |
 | `VibeUI:Loader(opts)` | Loading screen. See **Overlays** below. |
 | `VibeUI:MessageBox(opts)` | Modal message box with buttons. See **Overlays**. |
 | `VibeUI:KeySystem(opts)` | Key gate with a `Validate` hook for auth/whitelisting. See **Overlays**. |
@@ -65,9 +67,14 @@ The menu toggles with **Right Ctrl** by default (configurable in Settings).
 `"Top"` for a horizontal tab bar above full-width content).
 
 Every window has a **title bar** with **minimize** (collapses to the bar) and
-**maximize** (toggles ~92% of the viewport) buttons — also `window:SetMinimized(b)`
-/ `window:SetMaximized(b)`. The window is draggable by the title bar and by the
-empty area of the sidebar / top bar.
+**maximize** (fills the screen) buttons — also `window:SetMinimized(b)` /
+`window:SetMaximized(b)`. The window is draggable by the title bar and by the
+empty area of the sidebar / top bar. Switch layout live with
+`window:SetLayout("Side" | "Top")` (also a Settings toggle).
+
+Notifications are customizable: `Config.NotificationDuration` (default seconds,
+Settings slider), `Config.NotificationSound` (asset id, Settings toggle), and
+per-call `{ Duration =, Sound =, Volume = }`.
 
 ### Window → Tab → Section
 ```lua

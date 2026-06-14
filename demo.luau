@@ -40,6 +40,17 @@ Aimbot:Label("FOV Color"):AddColorpicker({
 local Misc = Combat:Section({ Name = "Misc", Side = 2 })
 Misc:Toggle({ Name = "Wall check", Flag = "WallCheck", Default = true })
 Misc:Toggle({ Name = "Team check", Flag = "TeamCheck", Default = true })
+
+-- optional inventory browser, toggled from here
+local Inventory = VibeUI:InventoryViewer()
+Inventory:SetPlayer(game:GetService("Players").LocalPlayer)
+Inventory:SetHealth(100)
+Inventory:SetDistance(0)
+Inventory:AddTool("Sword")
+Inventory:AddTool("Potion")
+Inventory:SetVisibility(false)
+Misc:Toggle({ Name = "Inventory browser", Flag = "ShowInventory", Default = false,
+	Callback = function(v) Inventory:SetVisibility(v) end })
 Misc:Toggle({ Name = "Risky feature", Flag = "Risky", Info = "May get you banned", InfoType = "warning" })
 Misc:Button():Add("Message box", function()
 	VibeUI:MessageBox({ Title = "Confirm", Text = "Run this risky action?",
