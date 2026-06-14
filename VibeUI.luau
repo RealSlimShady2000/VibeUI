@@ -591,18 +591,42 @@ local function MakeDraggable(frame: GuiObject, handle: GuiObject?, maid)
 end
 
 local function MakeResizable(frame: GuiObject, minSize: Vector2, maid)
+	-- invisible hit area in the bottom-right corner…
 	local grip = Create("TextButton", {
 		Parent = frame,
 		Text = "",
 		AutoButtonColor = false,
 		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -3, 1, -3),
-		Size = UDim2.fromOffset(8, 8),
+		Position = UDim2.new(1, -2, 1, -2),
+		Size = UDim2.fromOffset(16, 16),
 		BorderSizePixel = 0,
 		ZIndex = 20,
-		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-		ThemeTag = { BackgroundColor3 = "Accent" },
+		BackgroundTransparency = 1,
 	})
+	-- …with three diagonal grip dots (subtle; brighten to accent on hover)
+	local dots = {}
+	for i = 0, 2 do
+		local d = Create("Frame", {
+			Parent = grip, AnchorPoint = Vector2.new(1, 1),
+			Position = UDim2.new(1, -(i * 4), 1, -(i * 4)), Size = UDim2.fromOffset(3, 3),
+			BorderSizePixel = 0, BackgroundTransparency = 0.35, ZIndex = 21,
+			BackgroundColor3 = Color3.fromRGB(120, 130, 140), ThemeTag = { BackgroundColor3 = "Outline" },
+		})
+		Create("UICorner", { Parent = d, CornerRadius = UDim.new(1, 0) })
+		dots[#dots + 1] = d
+	end
+	maid:GiveTask(grip.MouseEnter:Connect(function()
+		for _, d in dots do
+			Theme.Retag(d, { BackgroundColor3 = "Accent" })
+			Tween.To(d, { BackgroundColor3 = Theme.Values.Accent, BackgroundTransparency = 0 })
+		end
+	end))
+	maid:GiveTask(grip.MouseLeave:Connect(function()
+		for _, d in dots do
+			Theme.Retag(d, { BackgroundColor3 = "Outline" })
+			Tween.To(d, { BackgroundColor3 = Theme.Values.Outline, BackgroundTransparency = 0.35 })
+		end
+	end))
 	local resizing, startSize, startPos = false, nil, nil
 	maid:GiveTask(grip.InputBegan:Connect(function(input)
 		if Input.isPrimary(input) then
@@ -1624,19 +1648,17 @@ function Components.Colorpicker(data)
 		if last then last.Completed:Once(done) else done() end
 	end
 
-	-- dragging the palette / hue / alpha. We use the InputObject's own Position
-	-- (the exact point used for hit-testing) so the marker lands under the click
-	-- regardless of cursor rendering / display scaling. Falls back to MousePos.
+	-- dragging the palette / hue / alpha. MousePos() (GetMouseLocation) is verified
+	-- to live in the same space as AbsolutePosition, so the marker tracks the mouse.
 	local function bindDrag(button, onMove)
 		local active = false
-		local function run(input)
-			local pos = (input and input.Position) and Vector2.new(input.Position.X, input.Position.Y) or MousePos()
-			onMove(pos)
+		local function run()
+			onMove(MousePos())
 		end
 		maid:GiveTask(button.InputBegan:Connect(function(input)
 			if Input.isPrimary(input) then
 				active = true
-				run(input)
+				run()
 				local conn
 				conn = input.Changed:Connect(function()
 					if input.UserInputState == Enum.UserInputState.End then active = false conn:Disconnect() end
@@ -1644,7 +1666,7 @@ function Components.Colorpicker(data)
 			end
 		end))
 		maid:GiveTask(Input.On("Changed", function(input)
-			if active and Input.isMove(input) then run(input) end
+			if active and Input.isMove(input) then run() end
 		end))
 	end
 
