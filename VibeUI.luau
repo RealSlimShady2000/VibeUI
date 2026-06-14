@@ -1232,9 +1232,13 @@ function Components.Slider(data)
 		Size = UDim2.new(1, 0, 0, 28), BorderSizePixel = 0 })
 	MakeText(container, data.Name or "Slider", { Size = UDim2.new(0, 0, 0, 15),
 		AutomaticSize = Enum.AutomaticSize.X })
-	local valueText = MakeText(container, "", { AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 0, 0, 15),
-		AutomaticSize = Enum.AutomaticSize.X })
+	-- editable value: click to type a number (clamped on commit)
+	local valueText = Create("TextBox", { Parent = container, FontFace = GetFont(), TextSize = 13,
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 0, 0, 15),
+		AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1, Text = "", ClearTextOnFocus = false,
+		TextColor3 = Color3.fromRGB(235, 235, 235), TextXAlignment = Enum.TextXAlignment.Right,
+		ThemeTag = { TextColor3 = "Text" } })
+	TextStroke(valueText)
 
 	local bar = Create("TextButton", { Parent = container, Text = "", AutoButtonColor = false,
 		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
@@ -1260,6 +1264,13 @@ function Components.Slider(data)
 		valueText.Text = tostring(self.Value) .. suffix
 		if data.Callback then Library:SafeCall(data.Callback, self.Value) end
 	end
+
+	-- typed input: parse the first number from the text on commit (ignores the
+	-- suffix), else revert to the current value
+	maid:GiveTask(valueText.FocusLost:Connect(function()
+		local n = tonumber(valueText.Text:match("%-?%d+%.?%d*"))
+		self:Set(n or self.Value)
+	end))
 
 	local sliding = false
 	local function setFrom(input)
