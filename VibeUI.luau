@@ -632,6 +632,18 @@ local UnusedHolder = Create("ScreenGui", {
 })
 LibMaid:GiveTask(UnusedHolder)
 
+-- Modals (loader / message box / key system) render above the main UI.
+-- Sibling z-index behaviour means child ZIndex need not be set manually.
+local ModalHolder = Create("ScreenGui", {
+	Parent = Parent,
+	Name = "\0",
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	IgnoreGuiInset = false,
+	DisplayOrder = 1000,
+	ResetOnSpawn = false,
+})
+LibMaid:GiveTask(ModalHolder)
+
 -- Full-screen transparent layer; toasts are pushed to a configurable corner
 -- by the layout's alignment (see ApplyNotificationSide).
 local NotifHolder = Create("Frame", {
@@ -1869,6 +1881,7 @@ function Library:Window(data: WindowConfig?)
 			BackgroundColor3 = Color3.fromRGB(20, 24, 21), ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Outline" } })
 		Stroke(side, "Border")
 		Corner(side)
+		MakeDraggable(root, side, maid) -- drag from empty sidebar area too
 		tabHolder = Create("Frame", { Parent = side, BackgroundTransparency = 1,
 			Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 1, -16) })
 		Create("UIPadding", { Parent = tabHolder, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
@@ -1881,6 +1894,7 @@ function Library:Window(data: WindowConfig?)
 			BackgroundColor3 = Color3.fromRGB(20, 24, 21), ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Outline" } })
 		Stroke(topbar, "Border")
 		Corner(topbar)
+		MakeDraggable(root, topbar, maid) -- drag from empty top-bar area too
 		tabHolder = Create("Frame", { Parent = topbar, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 		Create("UIPadding", { Parent = tabHolder, PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5),
 			PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4) })
@@ -2316,6 +2330,196 @@ end
 --- Make the whole UI see-through. alpha: 0 (opaque) … 1 (invisible).
 function Library:SetTransparency(alpha: number)
 	ApplyTransparency(alpha)
+end
+
+--==============================================================================
+-- Overlays: Loader, MessageBox, KeySystem
+--==============================================================================
+
+-- shared dimmed backdrop + centered panel (in ModalHolder; sibling z-index)
+local function buildModal(width: number, opts)
+	opts = opts or {}
+	local modalMaid = Maid.new()
+	LibMaid:GiveTask(modalMaid)
+	local backdrop = Create("Frame", { Parent = ModalHolder, BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), BorderSizePixel = 0 })
+	modalMaid:GiveTask(backdrop)
+	if opts.Dim ~= false then Tween.To(backdrop, { BackgroundTransparency = 0.5 }) end
+
+	local panel = Create("Frame", { Parent = backdrop, AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(width, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2, BackgroundColor3 = Color3.fromRGB(14, 17, 15),
+		ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
+	Stroke(panel, "Outline")
+	Corner(panel, 6)
+	Create("Frame", { Parent = panel, Size = UDim2.new(1, 0, 0, 2), BorderSizePixel = 0,
+		BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
+	Create("UIPadding", { Parent = panel, PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 14),
+		PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16) })
+	Create("UIListLayout", { Parent = panel, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center })
+
+	local function close()
+		Tween.To(backdrop, { BackgroundTransparency = 1 })
+		local last = Tween.Fade(panel, false, Config.FadeSpeed)
+		local function fin() modalMaid:Clean() end
+		if last then last.Completed:Once(fin) else task.delay(0.25, fin) end
+	end
+	return backdrop, panel, close, modalMaid
+end
+
+--- A simple progress/loading screen. Returns a handle:
+---   :SetProgress(0..1)  :SetStatus(text)  :SetTitle(text)  :Finish(delay?)  :Close()
+function Library:Loader(opts)
+	opts = opts or {}
+	local _, panel, close = buildModal(opts.Width or 320, { Dim = opts.Dim })
+
+	if opts.Logo and opts.Logo ~= "" then
+		Create("ImageLabel", { Parent = panel, BackgroundTransparency = 1, Size = UDim2.fromOffset(56, 56),
+			LayoutOrder = 0, ScaleType = Enum.ScaleType.Fit, Image = "rbxassetid://" .. opts.Logo,
+			ImageColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { ImageColor3 = "Accent" } })
+	end
+	local title = MakeText(panel, opts.Title or "Loading", { Size = UDim2.new(1, 0, 0, 18), LayoutOrder = 1,
+		FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 16, TextXAlignment = Enum.TextXAlignment.Center })
+	local status = MakeText(panel, opts.Status or "Please wait…", { Size = UDim2.new(1, 0, 0, 15), LayoutOrder = 2,
+		TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.fromRGB(185, 185, 185),
+		ThemeTag = { TextColor3 = "Placeholder Text" } })
+
+	local track = Create("Frame", { Parent = panel, Size = UDim2.new(1, 0, 0, 8), LayoutOrder = 3,
+		BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2, BackgroundColor3 = Color3.fromRGB(30, 36, 31),
+		ThemeTag = { BackgroundColor3 = "Element", BorderColor3 = "Border" } })
+	Stroke(track, "Outline")
+	Corner(track, 3)
+	local fill = Create("Frame", { Parent = track, Size = UDim2.new(0, 0, 1, 0), BorderSizePixel = 0,
+		BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
+	Corner(fill, 3)
+
+	local handle = {}
+	function handle:SetProgress(a) Tween.To(fill, { Size = UDim2.new(math.clamp(a, 0, 1), 0, 1, 0) },
+		Tween.Info(nil, Enum.EasingStyle.Quart)) end
+	function handle:SetStatus(t) status.Text = tostring(t) end
+	function handle:SetTitle(t) title.Text = tostring(t) end
+	function handle:Close() close() end
+	function handle:Finish(delay) handle:SetProgress(1); task.delay(delay or 0.4, close) end
+	return handle
+end
+
+--- A modal message box. opts: { Title, Text, Buttons = { {Text=, Callback=, Primary=bool}, ... } }.
+--- Convenience: opts.Confirm / opts.Cancel callbacks create Yes/No buttons.
+function Library:MessageBox(opts)
+	opts = opts or {}
+	local _, panel, close = buildModal(opts.Width or 340, {})
+
+	MakeText(panel, opts.Title or "Notice", { Size = UDim2.new(1, 0, 0, 18), LayoutOrder = 0,
+		FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 16, TextXAlignment = Enum.TextXAlignment.Center })
+	if opts.Text and opts.Text ~= "" then
+		MakeText(panel, opts.Text, { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1,
+			TextWrapped = true, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center,
+			TextColor3 = Color3.fromRGB(210, 210, 210), ThemeTag = { TextColor3 = "Text" } })
+	end
+
+	local buttons = opts.Buttons
+	if not buttons then
+		buttons = {}
+		if opts.Confirm then table.insert(buttons, { Text = opts.ConfirmText or "Confirm", Callback = opts.Confirm, Primary = true }) end
+		if opts.Cancel then table.insert(buttons, { Text = opts.CancelText or "Cancel", Callback = opts.Cancel }) end
+		if #buttons == 0 then buttons = { { Text = "OK", Primary = true } } end
+	end
+
+	local row = Create("Frame", { Parent = panel, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24),
+		LayoutOrder = 2 })
+	Create("UIListLayout", { Parent = row, FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalFlex = Enum.UIFlexAlignment.Fill, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
+	for i, b in buttons do
+		local btn = ElementSkin(row, 24)
+		btn.LayoutOrder = i
+		if b.Primary then
+			Theme.Retag(btn, { BackgroundColor3 = "Accent" })
+			btn.BackgroundColor3 = Theme.Values.Accent
+		end
+		MakeText(btn, b.Text or "OK", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center,
+			TextColor3 = b.Primary and Color3.fromRGB(14, 17, 15) or Color3.fromRGB(235, 235, 235),
+			ThemeTag = b.Primary and { TextColor3 = "Background" } or { TextColor3 = "Text" } })
+		btn.MouseButton1Click:Connect(function()
+			close()
+			if b.Callback then Library:SafeCall(b.Callback) end
+		end)
+	end
+	return { Close = close }
+end
+
+--- A key system gate. opts:
+---   Title, Note, Placeholder, SaveKey(bool), Links = { {Text=, Url=} },
+---   Validate = function(key) -> boolean[, message]   (do HTTP auth / whitelist here)
+---   OnSuccess = function(key), OnFail = function()
+--- Returns a handle; if SaveKey and a stored key validates, it succeeds instantly.
+function Library:KeySystem(opts)
+	opts = opts or {}
+	local _, panel, close = buildModal(opts.Width or 360, {})
+	local keyFile = Folders.Root .. "/key.txt"
+
+	MakeText(panel, opts.Title or "Key System", { Size = UDim2.new(1, 0, 0, 18), LayoutOrder = 0,
+		FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 16, TextXAlignment = Enum.TextXAlignment.Center })
+	MakeText(panel, opts.Note or "Enter your key to continue.", { Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, TextWrapped = true, TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.fromRGB(185, 185, 185),
+		ThemeTag = { TextColor3 = "Placeholder Text" } })
+
+	local box = ElementSkin(panel, 26)
+	box.LayoutOrder = 2
+	local input = Create("TextBox", { Parent = box, FontFace = GetFont(), TextSize = 13, Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1, Text = "", ClearTextOnFocus = false, TextColor3 = Color3.fromRGB(235, 235, 235),
+		PlaceholderText = opts.Placeholder or "Paste key…", PlaceholderColor3 = Color3.fromRGB(185, 185, 185),
+		BorderSizePixel = 0, ThemeTag = { TextColor3 = "Text", PlaceholderColor3 = "Placeholder Text" } })
+	Create("UIPadding", { Parent = input, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
+
+	local handle = {}
+	local function validate(key)
+		key = (key or ""):gsub("^%s+", ""):gsub("%s+$", "")
+		if key == "" then return end
+		local ok, result, msg = pcall(opts.Validate or function() return false end, key)
+		if ok and result then
+			if opts.SaveKey and HasFileSystem then pcall(writefile, keyFile, key) end
+			Library:Notification({ Title = "Key System", Description = "Key accepted.", Type = "success", Duration = 4 })
+			close()
+			if opts.OnSuccess then Library:SafeCall(opts.OnSuccess, key) end
+		else
+			Library:Notification({ Title = "Key System", Description = msg or "Invalid key.", Type = "error", Duration = 5 })
+			-- shake the panel
+			local p = panel.Position
+			Tween.To(panel, { Position = p + UDim2.fromOffset(8, 0) }, Tween.Info(0.05))
+			task.delay(0.05, function() Tween.To(panel, { Position = p }, Tween.Info(0.12, Enum.EasingStyle.Elastic)) end)
+			if opts.OnFail then Library:SafeCall(opts.OnFail) end
+		end
+	end
+
+	local actions = Create("Frame", { Parent = panel, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24),
+		LayoutOrder = 3 })
+	Create("UIListLayout", { Parent = actions, FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalFlex = Enum.UIFlexAlignment.Fill, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
+
+	for i, link in (opts.Links or {}) do
+		local lb = ElementSkin(actions, 24); lb.LayoutOrder = i
+		MakeText(lb, link.Text or "Get Key", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+		lb.MouseButton1Click:Connect(function()
+			if setclipboard then pcall(setclipboard, link.Url) end
+			Library:Notification({ Title = "Key System", Description = "Link copied to clipboard.", Type = "info", Duration = 4 })
+		end)
+	end
+	local checkBtn = ElementSkin(actions, 24); checkBtn.LayoutOrder = 100
+	Theme.Retag(checkBtn, { BackgroundColor3 = "Accent" }); checkBtn.BackgroundColor3 = Theme.Values.Accent
+	MakeText(checkBtn, "Check", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center,
+		TextColor3 = Color3.fromRGB(14, 17, 15), ThemeTag = { TextColor3 = "Background" } })
+	checkBtn.MouseButton1Click:Connect(function() validate(input.Text) end)
+	input.FocusLost:Connect(function(enter) if enter then validate(input.Text) end end)
+
+	function handle:Close() close() end
+
+	-- try a previously-saved key
+	if opts.SaveKey and HasFileSystem and isfile(keyFile) then
+		task.defer(function() validate(readfile(keyFile)) end)
+	end
+	return handle
 end
 
 --==============================================================================
