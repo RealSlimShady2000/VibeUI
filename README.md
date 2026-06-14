@@ -49,6 +49,7 @@ The menu toggles with **Right Ctrl** by default (configurable in Settings).
 | `VibeUI:KeybindList()` | Active-keybind list (call before creating keybinds). |
 | `VibeUI:Notification(...)` | Toast. See **Notifications** below. Returns a handle with `:Close()`. |
 | `VibeUI:SetNotificationSide(side)` | `"BottomRight"`/`"BottomLeft"`/`"TopRight"`/`"TopLeft"`. |
+| `VibeUI:SetTransparency(alpha)` | Make the whole UI see-through. `0` = opaque … `1` = invisible. Also a Settings slider. |
 | `VibeUI:CreateSettingsPage(window, watermark?, keybindList?)` | Adds a Theming/Configs/Interface tab. |
 | `VibeUI:GetConfig()` / `:LoadConfig(json)` | Serialize / apply all flags. |
 | `VibeUI:ListConfigs()` / `:SaveConfig(name)` / `:DeleteConfig(name)` / `:ReadConfig(name)` | Config files (no-ops without a filesystem). |

@@ -128,6 +128,7 @@ local Config = {
 	CustomCursor = true,
 	Rounded      = false,
 	NotificationSide = "BottomRight", -- BottomRight | BottomLeft | TopRight | TopLeft
+	Transparency = 0, -- 0 = opaque, 1 = fully see-through
 }
 
 local Folders = {
@@ -354,6 +355,14 @@ local Tween = {} do
 		return t[prop]
 	end
 
+	--- Update the cached "visible" value so fades animate to the new target
+	--- (used by the global UI-transparency feature).
+	function Tween.SetShown(inst: Instance, prop: string, value: number)
+		local t = ShownCache[inst]
+		if not t then t = {}; ShownCache[inst] = t end
+		t[prop] = value
+	end
+
 	local function info(timeOverride, styleOverride, dirOverride)
 		return TweenInfo.new(
 			timeOverride or Config.Tween.Time,
@@ -403,6 +412,9 @@ end
 -- Instance factory + small UI helpers
 --==============================================================================
 
+-- Opaque background surfaces tracked for the global UI-transparency feature.
+local Surfaces: { { inst: Instance, base: number } } = {}
+
 --- Create an instance. `props.ThemeTag = {Prop = "Key"|fn}` auto-registers theme.
 local function Create(class: string, props, children: { Instance }?): any
 	local inst = Instance.new(class)
@@ -412,6 +424,14 @@ local function Create(class: string, props, children: { Instance }?): any
 	props.Parent = nil
 	for k, v in props do
 		inst[k] = v
+	end
+	-- track opaque surfaces so they can be made see-through globally
+	local okBT, bt = pcall(function() return inst.BackgroundTransparency end)
+	if okBT and type(bt) == "number" and bt < 1 then
+		table.insert(Surfaces, { inst = inst, base = bt })
+		if Config.Transparency and Config.Transparency > 0 then
+			inst.BackgroundTransparency = bt + (1 - bt) * Config.Transparency
+		end
 	end
 	if themeTag then
 		Theme.Tag(inst, themeTag)
@@ -444,7 +464,7 @@ local function TextStroke(parent: Instance): Instance
 	return Create("UIStroke", {
 		Parent = parent,
 		Thickness = 1,
-		Transparency = 0.6,
+		Transparency = 0.35,
 		LineJoinMode = Enum.LineJoinMode.Miter,
 		ThemeTag = { Color = "Text Stroke" },
 	})
@@ -474,6 +494,21 @@ local function MakeText(parent: Instance, text: string, props): TextLabel
 	local label = Create("TextLabel", props)
 	TextStroke(label)
 	return label
+end
+
+--- Make the whole UI see-through. alpha: 0 (opaque) … 1 (invisible).
+--- Lerps every tracked opaque surface and keeps fade animations in sync.
+local function ApplyTransparency(alpha: number)
+	Config.Transparency = math.clamp(alpha, 0, 1)
+	for i = #Surfaces, 1, -1 do
+		local entry = Surfaces[i]
+		local ok = pcall(function()
+			local v = entry.base + (1 - entry.base) * Config.Transparency
+			entry.inst.BackgroundTransparency = v
+			Tween.SetShown(entry.inst, "BackgroundTransparency", v)
+		end)
+		if not ok then table.remove(Surfaces, i) end -- prune destroyed instances
+	end
 end
 
 --==============================================================================
@@ -1973,7 +2008,7 @@ local NOTIF_TYPES = {
 	info    = { color = function() return Theme.Values.Accent end,   glyph = "i" },
 	success = { color = function() return Color3.fromRGB(120, 230, 150) end, glyph = "✓" },
 	warning = { color = function() return Color3.fromRGB(245, 205, 110) end, glyph = "!" },
-	error   = { color = function() return Color3.fromRGB(245, 120, 120) end, glyph = "✕" },
+	error   = { color = function() return Color3.fromRGB(245, 120, 120) end, glyph = "×" },
 }
 
 local NOTIF_WIDTH = 250
@@ -2023,14 +2058,16 @@ function Library:Notification(title, description: string?, duration: number?, ki
 	Create("UIListLayout", { Parent = content, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder })
 
 	local titleLabel = MakeText(content, cfg.Title or "", { Size = UDim2.new(1, 0, 0, 0),
+		FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 14,
 		AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
 		TextTransparency = 1, LayoutOrder = 1 })
 	local descLabel
 	if cfg.Description and cfg.Description ~= "" then
 		descLabel = MakeText(content, cfg.Description, { Size = UDim2.new(1, 0, 0, 0),
+			FontFace = Font.fromEnum(Enum.Font.GothamMedium), TextSize = 13,
 			AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
-			TextTransparency = 1, TextColor3 = Color3.fromRGB(185, 185, 185),
-			ThemeTag = { TextColor3 = "Placeholder Text" }, LayoutOrder = 2 })
+			TextTransparency = 1, TextColor3 = Color3.fromRGB(220, 220, 220),
+			ThemeTag = { TextColor3 = "Text" }, LayoutOrder = 2 })
 	end
 
 	-- progress bar (shrinks over the duration), then a small bottom spacer
@@ -2065,7 +2102,7 @@ function Library:Notification(title, description: string?, duration: number?, ki
 	Tween.To(stripe, { BackgroundTransparency = 0 })
 	Tween.To(glyph, glyph:IsA("ImageLabel") and { ImageTransparency = 0 } or { TextTransparency = 0 })
 	Tween.To(titleLabel, { TextTransparency = 0 })
-	if descLabel then Tween.To(descLabel, { TextTransparency = 0.25 }) end
+	if descLabel then Tween.To(descLabel, { TextTransparency = 0 }) end
 	progress.BackgroundTransparency = 0
 	Tween.To(progress, { Size = UDim2.new(0, 0, 0, 2) }, Tween.Info(duration, Enum.EasingStyle.Linear))
 
@@ -2085,6 +2122,11 @@ end
 --- side: "BottomRight" | "BottomLeft" | "TopRight" | "TopLeft"
 function Library:SetNotificationSide(side: string)
 	ApplyNotificationSide(side)
+end
+
+--- Make the whole UI see-through. alpha: 0 (opaque) … 1 (invisible).
+function Library:SetTransparency(alpha: number)
+	ApplyTransparency(alpha)
 end
 
 --==============================================================================
@@ -2176,6 +2218,8 @@ function Library:CreateSettingsPage(window, watermark, keybindList)
 			ApplyNotificationSide(v)
 			Library:Notification({ Title = "Notifications", Description = "Now anchored " .. v, Type = "info", Duration = 3 })
 		end })
+	settingsSection:Slider({ Name = "UI transparency", Flag = "UITransparency", Min = 0, Max = 1, Decimals = 0.01,
+		Default = Config.Transparency, Suffix = "", Callback = function(v) ApplyTransparency(v) end })
 	settingsSection:Slider({ Name = "Fade time", Flag = "FadeTime", Min = 0, Max = 1, Decimals = 0.01,
 		Default = Config.FadeSpeed, Callback = function(v) Config.FadeSpeed = v end })
 	settingsSection:Slider({ Name = "Tween time", Flag = "TweenTime", Min = 0, Max = 1, Decimals = 0.01,
