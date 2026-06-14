@@ -132,7 +132,10 @@ local Config = {
 	Rounded      = false,
 	Outlines     = true, -- element border outlines (toggle off for a flatter look)
 	NotificationSide = "BottomRight", -- BottomRight | BottomLeft | TopRight | TopLeft
+	NotificationDuration = 5, -- default seconds a toast stays on screen
+	NotificationSound = "rbxassetid://9080003278", -- played on each toast ("" to disable)
 	Transparency = 0, -- 0 = opaque, 1 = fully see-through
+	Scale        = 1, -- global UI scale
 }
 
 local Folders = {
@@ -534,6 +537,22 @@ end
 --- given the current global UI transparency.
 local function SurfaceAlpha(base: number): number
 	return base + (1 - base) * Config.Transparency
+end
+
+-- Global UI scale: a UIScale per top-level surface, driven together.
+local ScaleInstances: { Instance } = {}
+local function trackScale(guiObject: Instance): Instance
+	local s = Create("UIScale", { Parent = guiObject, Scale = Config.Scale })
+	table.insert(ScaleInstances, s)
+	return s
+end
+local function ApplyScale(n: number)
+	Config.Scale = math.clamp(n, 0.5, 2)
+	for i = #ScaleInstances, 1, -1 do
+		if not pcall(function() ScaleInstances[i].Scale = Config.Scale end) then
+			table.remove(ScaleInstances, i)
+		end
+	end
 end
 
 -- Functions that re-apply state-dependent transparency (e.g. the active tab,
@@ -1724,25 +1743,34 @@ function Components.Keybind(data)
 		TextColor3 = Color3.fromRGB(235, 235, 235), ThemeTag = { TextColor3 = "Text" } })
 	TextStroke(btn)
 
-	-- mode picker popup
-	local win = Create("Frame", { Parent = UnusedHolder, Visible = false, Size = UDim2.fromOffset(80, 0),
+	-- mode picker popup (styled like dropdown options)
+	local win = Create("Frame", { Parent = UnusedHolder, Visible = false, Size = UDim2.fromOffset(96, 0),
 		AutomaticSize = Enum.AutomaticSize.Y, BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2,
-		BackgroundColor3 = Color3.fromRGB(14, 17, 15), ZIndex = 60,
-		ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
+		BackgroundColor3 = Color3.fromRGB(20, 24, 21), ZIndex = 60,
+		ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Border" } })
 	Stroke(win, "Outline")
+	Corner(win, 4)
 	maid:GiveTask(win)
-	Create("UIListLayout", { Parent = win, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder })
-	Create("UIPadding", { Parent = win, PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
-		PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) })
+	Create("UIListLayout", { Parent = win, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder })
+	Create("UIPadding", { Parent = win, PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
+		PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4) })
 
 	local modeButtons = {}
 	for _, mode in { "Toggle", "Hold", "Always" } do
-		local mb = Create("TextButton", { Parent = win, FontFace = GetFont(), TextSize = 12, Text = mode,
-			AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 18), BorderSizePixel = 0, ZIndex = 61,
-			BackgroundColor3 = Color3.fromRGB(202, 243, 255), TextColor3 = Color3.fromRGB(235, 235, 235),
-			ThemeTag = { BackgroundColor3 = "Accent", TextColor3 = "Text" } })
-		TextStroke(mb)
+		local mb = Create("TextButton", { Parent = win, FontFace = GetFont(), TextSize = 13, Text = mode,
+			AutoButtonColor = false, Size = UDim2.new(1, 0, 0, 20), BorderSizePixel = 0, ZIndex = 61,
+			TextXAlignment = Enum.TextXAlignment.Left, BackgroundTransparency = 1,
+			BackgroundColor3 = Color3.fromRGB(37, 42, 45), TextColor3 = Color3.fromRGB(235, 235, 235),
+			ThemeTag = { BackgroundColor3 = "Hovered Element", TextColor3 = "Text" } })
+		Create("UIPadding", { Parent = mb, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
+		Corner(mb, 3)
 		modeButtons[mode] = mb
+		maid:GiveTask(mb.MouseEnter:Connect(function()
+			if self.Mode ~= mode then Tween.To(mb, { BackgroundTransparency = 0.5 }) end
+		end))
+		maid:GiveTask(mb.MouseLeave:Connect(function()
+			if self.Mode ~= mode then Tween.To(mb, { BackgroundTransparency = 1 }) end
+		end))
 		maid:GiveTask(mb.MouseButton1Click:Connect(function() self:SetMode(mode) end))
 	end
 
@@ -1754,7 +1782,13 @@ function Components.Keybind(data)
 	function self:SetMode(mode)
 		self.Mode = mode
 		for m, mb in modeButtons do
-			Tween.To(mb, { BackgroundTransparency = (m == mode) and 0 or 1 })
+			if m == mode then
+				Theme.Retag(mb, { TextColor3 = "Accent" })
+				Tween.To(mb, { BackgroundTransparency = 0.85, TextColor3 = Theme.Values.Accent })
+			else
+				Theme.Retag(mb, { TextColor3 = "Text" })
+				Tween.To(mb, { BackgroundTransparency = 1, TextColor3 = Theme.Values.Text })
+			end
 		end
 		flagState()
 		if keyListEntry then keyListEntry:SetText(self.Value, data.Name or "Keybind", self.Mode) end
@@ -1895,6 +1929,7 @@ function Library:Window(data: WindowConfig?)
 		ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
 	Stroke(root, "Outline")
 	Corner(root, 6)
+	trackScale(root)
 	local resizeGrip = (data.Resizable ~= false) and MakeResizable(root, Vector2.new(520, 320), maid) or nil
 
 	-- title bar: logo + title (left), window controls (right); also the drag handle
@@ -1934,35 +1969,46 @@ function Library:Window(data: WindowConfig?)
 	local body = Create("Frame", { Parent = root, BackgroundTransparency = 1, BorderSizePixel = 0,
 		Position = UDim2.fromOffset(0, TITLEBAR_H), Size = UDim2.new(1, 0, 1, -TITLEBAR_H) })
 
-	local tabHolder, content
-	if layoutMode == "Side" then
-		local side = Create("Frame", { Parent = body, Position = UDim2.fromOffset(12, 6),
-			Size = UDim2.new(0, 178, 1, -18), BorderColor3 = Color3.fromRGB(42, 49, 45), BorderSizePixel = 2,
-			BackgroundColor3 = Color3.fromRGB(20, 24, 21), ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Outline" } })
-		Stroke(side, "Border")
-		Corner(side)
-		MakeDraggable(root, side, maid) -- drag from empty sidebar area too
-		tabHolder = Create("Frame", { Parent = side, BackgroundTransparency = 1,
-			Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 1, -16) })
-		Create("UIPadding", { Parent = tabHolder, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
-		Create("UIListLayout", { Parent = tabHolder, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
-		content = Create("Frame", { Parent = body, BackgroundTransparency = 1,
-			Position = UDim2.fromOffset(202, 6), Size = UDim2.new(1, -214, 1, -18) })
-	else -- Top: horizontal tab bar above the content
-		local topbar = Create("Frame", { Parent = body, Position = UDim2.fromOffset(12, 6),
-			Size = UDim2.new(1, -24, 0, 30), BorderColor3 = Color3.fromRGB(42, 49, 45), BorderSizePixel = 2,
-			BackgroundColor3 = Color3.fromRGB(20, 24, 21), ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Outline" } })
-		Stroke(topbar, "Border")
-		Corner(topbar)
-		MakeDraggable(root, topbar, maid) -- drag from empty top-bar area too
-		tabHolder = Create("Frame", { Parent = topbar, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
-		Create("UIPadding", { Parent = tabHolder, PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5),
-			PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4) })
-		Create("UIListLayout", { Parent = tabHolder, FillDirection = Enum.FillDirection.Horizontal,
-			VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
-		content = Create("Frame", { Parent = body, BackgroundTransparency = 1,
-			Position = UDim2.fromOffset(12, 42), Size = UDim2.new(1, -24, 1, -54) })
+	-- Both layout containers are built; only the active one is shown, so the
+	-- layout can be switched live. Each tab makes a button in BOTH holders.
+	local content = Create("Frame", { Parent = body, BackgroundTransparency = 1, BorderSizePixel = 0 })
+
+	local sideContainer = Create("Frame", { Parent = body, Position = UDim2.fromOffset(12, 6),
+		Size = UDim2.new(0, 178, 1, -18), BorderColor3 = Color3.fromRGB(42, 49, 45), BorderSizePixel = 2,
+		BackgroundColor3 = Color3.fromRGB(20, 24, 21), ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Outline" } })
+	Stroke(sideContainer, "Border"); Corner(sideContainer)
+	MakeDraggable(root, sideContainer, maid)
+	local sideHolder = Create("Frame", { Parent = sideContainer, BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 1, -16) })
+	Create("UIPadding", { Parent = sideHolder, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
+	Create("UIListLayout", { Parent = sideHolder, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
+
+	local topContainer = Create("Frame", { Parent = body, Position = UDim2.fromOffset(12, 6),
+		Size = UDim2.new(1, -24, 0, 30), BorderColor3 = Color3.fromRGB(42, 49, 45), BorderSizePixel = 2,
+		BackgroundColor3 = Color3.fromRGB(20, 24, 21), ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Outline" } })
+	Stroke(topContainer, "Border"); Corner(topContainer)
+	MakeDraggable(root, topContainer, maid)
+	local topHolder = Create("Frame", { Parent = topContainer, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
+	Create("UIPadding", { Parent = topHolder, PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5),
+		PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4) })
+	Create("UIListLayout", { Parent = topHolder, FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
+
+	local function applyLayout(mode)
+		window.Layout = mode
+		local isSide = (mode == "Side")
+		sideContainer.Visible = isSide
+		topContainer.Visible = not isSide
+		if isSide then
+			content.Position = UDim2.fromOffset(202, 6); content.Size = UDim2.new(1, -214, 1, -18)
+		else
+			content.Position = UDim2.fromOffset(12, 42); content.Size = UDim2.new(1, -24, 1, -54)
+		end
 	end
+	function window:SetLayout(mode)
+		applyLayout((mode == "Top" or mode == "top") and "Top" or "Side")
+	end
+	applyLayout(layoutMode)
 
 	if CursorBg then CursorBg.Visible = true end
 
@@ -2026,40 +2072,44 @@ function Library:Window(data: WindowConfig?)
 		end
 	end))
 
+	-- tab button builders (one per layout; a tab makes both so layout can switch live)
+	local function makeSideTabBtn(name)
+		local btn = Create("TextButton", { Parent = sideHolder, Text = "", AutoButtonColor = false,
+			Size = UDim2.new(1, 0, 0, 25), BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2,
+			BackgroundTransparency = 0.6, BackgroundColor3 = Color3.fromRGB(25, 30, 26),
+			ThemeTag = { BackgroundColor3 = "Page Background", BorderColor3 = "Border" } })
+		Stroke(btn, "Outline", 0.6)
+		Corner(btn)
+		local liner = Create("Frame", { Parent = btn, Size = UDim2.new(0, 1, 1, 0), BorderSizePixel = 0,
+			BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
+		local label = MakeText(btn, name, { AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.new(0, 0, 0, 15),
+			TextXAlignment = Enum.TextXAlignment.Left, AutomaticSize = Enum.AutomaticSize.X })
+		return { btn = btn, liner = liner, label = label, side = true }
+	end
+	local function makeTopTabBtn(name)
+		local btn = Create("TextButton", { Parent = topHolder, Text = "", AutoButtonColor = false,
+			Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
+			BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 0,
+			BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(25, 30, 26),
+			ThemeTag = { BackgroundColor3 = "Page Background", BorderColor3 = "Border" } })
+		Corner(btn)
+		Create("UIPadding", { Parent = btn, PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) })
+		local liner = Create("Frame", { Parent = btn, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0),
+			Size = UDim2.new(1, -6, 0, 2), BorderSizePixel = 0, BackgroundTransparency = 1,
+			BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
+		local label = MakeText(btn, name, { AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 0, 0, 15),
+			TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.X })
+		return { btn = btn, liner = liner, label = label, side = false }
+	end
+
 	--------------------------------------------------------------- Tab ---
 	function window:Tab(tabData)
 		tabData = tabData or {}
 		local tab = { Sections = { ColumnsData = {} }, Active = false, Columns = tabData.Columns or 2 }
 
-		local btn, liner, label
-		if layoutMode == "Side" then
-			btn = Create("TextButton", { Parent = tabHolder, Text = "", AutoButtonColor = false,
-				Size = UDim2.new(1, 0, 0, 25), BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2,
-				BackgroundTransparency = 0.6, BackgroundColor3 = Color3.fromRGB(25, 30, 26),
-				ThemeTag = { BackgroundColor3 = "Page Background", BorderColor3 = "Border" } })
-			Stroke(btn, "Outline", 0.6)
-			Corner(btn)
-			liner = Create("Frame", { Parent = btn, Size = UDim2.new(0, 1, 1, 0), BorderSizePixel = 0,
-				BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(202, 243, 255),
-				ThemeTag = { BackgroundColor3 = "Accent" } })
-			label = MakeText(btn, tabData.Name or "Tab", { AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.new(0, 0, 0, 15),
-				TextXAlignment = Enum.TextXAlignment.Left, AutomaticSize = Enum.AutomaticSize.X })
-		else -- Top: auto-width pill with a centered label and a bottom accent liner
-			btn = Create("TextButton", { Parent = tabHolder, Text = "", AutoButtonColor = false,
-				Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
-				BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 0,
-				BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(25, 30, 26),
-				ThemeTag = { BackgroundColor3 = "Page Background", BorderColor3 = "Border" } })
-			Corner(btn)
-			Create("UIPadding", { Parent = btn, PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) })
-			liner = Create("Frame", { Parent = btn, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0),
-				Size = UDim2.new(1, -6, 0, 2), BorderSizePixel = 0, BackgroundTransparency = 1,
-				BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
-			label = MakeText(btn, tabData.Name or "Tab", { AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 0, 0, 15),
-				TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.X })
-		end
+		local buttons = { makeSideTabBtn(tabData.Name or "Tab"), makeTopTabBtn(tabData.Name or "Tab") }
 
 		local page = Create("Frame", { Parent = content, BackgroundTransparency = 1, Visible = false,
 			Size = UDim2.fromScale(1, 1) })
@@ -2081,40 +2131,41 @@ function Library:Window(data: WindowConfig?)
 			page.Parent = on and content or UnusedHolder
 			-- respect global UI transparency: active base 0, inactive base 0.6
 			local btnTarget = SurfaceAlpha(on and 0 or 0.6)
-			Tween.To(btn, { BackgroundTransparency = btnTarget })
-			Tween.SetShown(btn, "BackgroundTransparency", btnTarget)
-			Tween.To(liner, { BackgroundTransparency = on and 0 or 1 })
-			if layoutMode == "Side" then
-				Tween.To(label, { Position = UDim2.new(0, on and 13 or 8, 0.5, 0) })
+			for _, bd in buttons do
+				Tween.To(bd.btn, { BackgroundTransparency = btnTarget })
+				Tween.SetShown(bd.btn, "BackgroundTransparency", btnTarget)
+				Tween.To(bd.liner, { BackgroundTransparency = on and 0 or 1 })
+				if bd.side then Tween.To(bd.label, { Position = UDim2.new(0, on and 13 or 8, 0.5, 0) }) end
 			end
 			if on then window.CurrentTab = tab end
 			Tween.Fade(page, on, window.FadeTime)
 		end
 
-		-- re-apply the correct (state-dependent) transparency when the global
-		-- UI transparency changes, so the active tab doesn't snap to its base.
+		-- re-apply state-dependent transparency when the global UI transparency changes
 		table.insert(TransparencyRefreshers, function()
 			local t = SurfaceAlpha(tab.Active and 0 or 0.6)
-			btn.BackgroundTransparency = t
-			Tween.SetShown(btn, "BackgroundTransparency", t)
+			for _, bd in buttons do bd.btn.BackgroundTransparency = t; Tween.SetShown(bd.btn, "BackgroundTransparency", t) end
 		end)
 
-		maid:GiveTask(btn.MouseButton1Click:Connect(function()
+		local function switchToThis()
 			if tab.Active then return end
 			for _, t in window.Tabs do t:Turn(t == tab) end
-		end))
-		maid:GiveTask(btn.MouseEnter:Connect(function()
-			if not tab.Active then
-				Theme.Retag(btn, { BackgroundColor3 = "Hovered Element" })
-				Tween.To(btn, { BackgroundColor3 = Theme.Values["Hovered Element"] })
-			end
-		end))
-		maid:GiveTask(btn.MouseLeave:Connect(function()
-			if not tab.Active then
-				Theme.Retag(btn, { BackgroundColor3 = "Page Background" })
-				Tween.To(btn, { BackgroundColor3 = Theme.Values["Page Background"] })
-			end
-		end))
+		end
+		for _, bd in buttons do
+			maid:GiveTask(bd.btn.MouseButton1Click:Connect(switchToThis))
+			maid:GiveTask(bd.btn.MouseEnter:Connect(function()
+				if not tab.Active then
+					Theme.Retag(bd.btn, { BackgroundColor3 = "Hovered Element" })
+					Tween.To(bd.btn, { BackgroundColor3 = Theme.Values["Hovered Element"] })
+				end
+			end))
+			maid:GiveTask(bd.btn.MouseLeave:Connect(function()
+				if not tab.Active then
+					Theme.Retag(bd.btn, { BackgroundColor3 = "Page Background" })
+					Tween.To(bd.btn, { BackgroundColor3 = Theme.Values["Page Background"] })
+				end
+			end))
+		end
 
 		----------------------------------------------------- Section ---
 		function tab:Section(secData)
@@ -2252,17 +2303,92 @@ function Library:KeybindList()
 		local entry = MakeText(body, ("%s - %s (%s)"):format(key, name, mode), {
 			Size = UDim2.new(1, 0, 0, 15), AutomaticSize = Enum.AutomaticSize.X,
 			TextXAlignment = Enum.TextXAlignment.Left, Visible = false, TextTransparency = 1 })
-		return {
-			Instance = entry,
-			SetText = function(_, k, n, m) entry.Text = ("%s - %s (%s)"):format(k, n, m) end,
-			SetStatus = function(_, on)
-				if on then entry.Visible = true; Tween.To(entry, { TextTransparency = 0 })
-				else Tween.To(entry, { TextTransparency = 1 }).Completed:Once(function() entry.Visible = false end) end
-			end,
-		}
+		local item = { Instance = entry }
+		-- Entry is shown whenever a key is bound (not "None"); it does NOT hide when
+		-- the bind is inactive. SetStatus only changes the highlight colour.
+		function item:SetText(k, n, m)
+			entry.Text = ("%s - %s (%s)"):format(k, n, m)
+			local bound = k ~= nil and k ~= "" and k ~= "None"
+			entry.Visible = bound
+			Tween.To(entry, { TextTransparency = bound and 0 or 1 })
+		end
+		function item:SetStatus(on)
+			Theme.Retag(entry, { TextColor3 = on and "Accent" or "Text" })
+			Tween.To(entry, { TextColor3 = on and Theme.Values.Accent or Theme.Values.Text })
+		end
+		return item
 	end
 	function list:SetVisibility(b) frame.Visible = b end
 	return list
+end
+
+--- Optional inventory browser: a draggable panel with a player header (avatar /
+--- health / distance) and a grid of tool icons. Returns a viewer handle.
+function Library:InventoryViewer()
+	local viewer = { Items = {} }
+	local frame = Create("Frame", { Parent = Holder, Position = UDim2.fromOffset(20, 80),
+		Size = UDim2.fromOffset(320, 280), BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2,
+		BackgroundColor3 = Color3.fromRGB(14, 17, 15), ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
+	Stroke(frame, "Outline"); Corner(frame, 6); trackScale(frame)
+
+	local titlebar = Create("Frame", { Parent = frame, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
+	MakeDraggable(frame, titlebar, LibMaid)
+	local title = MakeText(titlebar, "Inventory", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 10, 0.5, 0),
+		Size = UDim2.new(1, -20, 0, 16), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Left,
+		FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 14 })
+	Create("Frame", { Parent = titlebar, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(202, 243, 255),
+		ThemeTag = { BackgroundColor3 = "Accent" } })
+
+	local tools = Create("ScrollingFrame", { Parent = frame, Position = UDim2.fromOffset(10, 34),
+		Size = UDim2.new(1, -20, 1, -110), BackgroundTransparency = 1, BorderSizePixel = 0,
+		CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 3,
+		ScrollBarImageColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { ScrollBarImageColor3 = "Accent" } })
+	Create("UIGridLayout", { Parent = tools, CellSize = UDim2.fromOffset(62, 62), CellPadding = UDim2.fromOffset(6, 6),
+		SortOrder = Enum.SortOrder.LayoutOrder })
+
+	local avatar = Create("ImageLabel", { Parent = frame, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 10, 1, -10),
+		Size = UDim2.fromOffset(58, 58), BorderColor3 = Color3.fromRGB(42, 49, 45), BorderSizePixel = 2,
+		BackgroundColor3 = Color3.fromRGB(20, 24, 21), Image = "rbxasset://textures/ui/GuiImagePlaceholder.png",
+		ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Outline" } })
+	Stroke(avatar, "Border")
+	local health = MakeText(frame, "Health: —", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 76, 1, -46),
+		Size = UDim2.new(1, -86, 0, 15), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Left })
+	local distance = MakeText(frame, "Distance: — studs", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 76, 1, -22),
+		Size = UDim2.new(1, -86, 0, 15), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Left })
+
+	function viewer:SetHealth(v) health.Text = "Health: " .. tostring(v) end
+	function viewer:SetDistance(v) distance.Text = "Distance: " .. tostring(v) .. " studs" end
+	function viewer:SetVisibility(b) frame.Visible = b end
+	function viewer:SetPlayer(plr)
+		title.Text = (plr.Name or "Player") .. "'s Inventory"
+		task.spawn(function()
+			local ok, img = pcall(function()
+				return (Players :: any):GetUserThumbnailAsync(plr.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+			end)
+			if ok and img then avatar.Image = img end
+		end)
+	end
+	function viewer:AddTool(name: string, image: string?)
+		local item = Create("Frame", { Parent = tools, BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2,
+			BackgroundColor3 = Color3.fromRGB(20, 24, 21), ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Outline" } })
+		Stroke(item, "Border"); Corner(item, 4)
+		Create("ImageLabel", { Parent = item, AnchorPoint = Vector2.new(0.5, 0.4), Position = UDim2.fromScale(0.5, 0.4),
+			Size = UDim2.fromOffset(34, 34), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit,
+			Image = image and ("rbxassetid://" .. tostring(image)) or "", ImageColor3 = Color3.fromRGB(202, 243, 255),
+			ThemeTag = { ImageColor3 = "Accent" } })
+		MakeText(item, name, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -3),
+			Size = UDim2.new(1, -6, 0, 12), TextSize = 11, TextXAlignment = Enum.TextXAlignment.Center,
+			TextTruncate = Enum.TextTruncate.AtEnd })
+		local handle = {}
+		function handle:Remove() viewer.Items[name] = nil; item:Destroy() end
+		viewer.Items[name] = handle
+		return handle
+	end
+	function viewer:RemoveAll()
+		for _, h in viewer.Items do h:Remove() end
+	end
+	return viewer
 end
 
 local NOTIF_TYPES = {
@@ -2287,9 +2413,28 @@ function Library:Notification(title, description: string?, duration: number?, ki
 		cfg = { Title = title, Description = description, Duration = duration, Type = kind }
 	end
 	local ntype = cfg.Type or "info"
-	duration = cfg.Duration or 5
+	duration = cfg.Duration or Config.NotificationDuration or 5
 	local typeData = NOTIF_TYPES[ntype] or NOTIF_TYPES.info
 	local accent = typeData.color()
+
+	-- optional notification sound
+	local soundId = cfg.Sound or Config.NotificationSound
+	if soundId and soundId ~= "" then
+		task.spawn(function()
+			local ok, snd = pcall(function()
+				local s = Instance.new("Sound")
+				s.SoundId = soundId
+				s.Volume = cfg.Volume or 0.5
+				s.Parent = Holder
+				return s
+			end)
+			if ok and snd then
+				snd:Play()
+				snd.Ended:Once(function() snd:Destroy() end)
+				task.delay(5, function() if snd then snd:Destroy() end end)
+			end
+		end)
+	end
 
 	local frame = Create("Frame", { Parent = NotifHolder, Size = UDim2.fromOffset(NOTIF_WIDTH, 0),
 		AutomaticSize = Enum.AutomaticSize.Y, BorderSizePixel = 2, BackgroundTransparency = 1,
@@ -2390,6 +2535,11 @@ function Library:SetTransparency(alpha: number)
 	ApplyTransparency(alpha)
 end
 
+--- Scale the whole UI. n: 0.5 … 2 (1 = default).
+function Library:SetScale(n: number)
+	ApplyScale(n)
+end
+
 --- Toggle element border outlines on/off (a flatter look when off).
 function Library:SetOutlines(on: boolean)
 	Config.Outlines = on
@@ -2431,6 +2581,7 @@ local function buildModal(width: number, opts)
 		PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16) })
 	Create("UIListLayout", { Parent = panel, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder,
 		HorizontalAlignment = Enum.HorizontalAlignment.Center })
+	trackScale(panel)
 
 	local function close()
 		Tween.To(backdrop, { BackgroundTransparency = 1 })
@@ -2686,8 +2837,16 @@ function Library:CreateSettingsPage(window, watermark, keybindList)
 			ApplyNotificationSide(v)
 			Library:Notification({ Title = "Notifications", Description = "Now anchored " .. v, Type = "info", Duration = 3 })
 		end })
+	settingsSection:Toggle({ Name = "Top-bar layout", Flag = "TopLayout", Default = (window.Layout == "Top"),
+		Callback = function(v) window:SetLayout(v and "Top" or "Side") end })
+	settingsSection:Slider({ Name = "UI scale", Flag = "UIScale", Min = 0.5, Max = 2, Decimals = 0.05,
+		Default = Config.Scale, Callback = function(v) ApplyScale(v) end })
 	settingsSection:Slider({ Name = "UI transparency", Flag = "UITransparency", Min = 0, Max = 1, Decimals = 0.01,
 		Default = Config.Transparency, Suffix = "", Callback = function(v) ApplyTransparency(v) end })
+	settingsSection:Slider({ Name = "Notif. duration", Flag = "NotifDuration", Min = 1, Max = 15, Decimals = 0.5, Suffix = "s",
+		Default = Config.NotificationDuration, Callback = function(v) Config.NotificationDuration = v end })
+	settingsSection:Toggle({ Name = "Notif. sounds", Flag = "NotifSounds", Default = Config.NotificationSound ~= "",
+		Callback = function(v) Config.NotificationSound = v and "rbxassetid://9080003278" or "" end })
 	settingsSection:Slider({ Name = "Fade time", Flag = "FadeTime", Min = 0, Max = 1, Decimals = 0.01,
 		Default = Config.FadeSpeed, Callback = function(v) Config.FadeSpeed = v end })
 	settingsSection:Slider({ Name = "Tween time", Flag = "TweenTime", Min = 0, Max = 1, Decimals = 0.01,
