@@ -10,13 +10,22 @@ dispatcher, a live theme system, and typed, documented components.
 > (e.g. plain Studio) it **degrades gracefully** — the UI still works; only
 > filesystem features (config save/load, custom font, palette images) disable.
 
-## Install
+## Try it instantly
+
+Paste this into your executor and run it — a full demo window opens immediately
+(press **Right Ctrl** to toggle it):
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/RealSlimShady2000/VibeUI/main/demo.luau"))()
+```
+
+## Install (build your own UI)
 
 ```lua
 local VibeUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/RealSlimShady2000/VibeUI/main/VibeUI.luau"))()
 ```
 
-See [`examples/usage.luau`](examples/usage.luau) for a full demo.
+See [`demo.luau`](demo.luau) / [`examples/usage.luau`](examples/usage.luau) for a full demo you can copy from.
 
 ## Quick start
 
