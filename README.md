@@ -13,7 +13,7 @@ dispatcher, a live theme system, and typed, documented components.
 ## Install
 
 ```lua
-local VibeUI = loadstring(game:HttpGet("https://your-host/VibeUI.luau"))()
+local VibeUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/RealSlimShady2000/VibeUI/main/VibeUI.luau"))()
 ```
 
 See [`examples/usage.luau`](examples/usage.luau) for a full demo.

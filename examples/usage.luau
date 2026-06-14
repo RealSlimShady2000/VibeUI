@@ -4,13 +4,13 @@
 
 	In an executor you would normally load the library straight from a URL:
 
-		local VibeUI = loadstring(game:HttpGet("https://your-host/VibeUI.luau"))()
+		local VibeUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/RealSlimShady2000/VibeUI/main/VibeUI.luau"))()
 
 	For local testing, point this at your hosted copy, or paste VibeUI.luau
 	above this script in the same execution.
 ]]
 
-local VibeUI = loadstring(game:HttpGet("https://your-host/VibeUI.luau"))()
+local VibeUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/RealSlimShady2000/VibeUI/main/VibeUI.luau"))()
 
 --==============================================================================
 -- Window + global UI
