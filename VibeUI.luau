@@ -125,7 +125,10 @@ local Config = {
 		Direction = Enum.EasingDirection.Out,
 	},
 	MenuKeybind  = Enum.KeyCode.RightControl,
-	CustomCursor = true,
+	-- Default to the real system cursor: a script-drawn cursor visibly drifts
+	-- from the OS pointer (which drives hover hit-testing) whenever the game
+	-- renders below native resolution or under display scaling. Opt-in only.
+	CustomCursor = false,
 	Rounded      = false,
 	NotificationSide = "BottomRight", -- BottomRight | BottomLeft | TopRight | TopLeft
 	Transparency = 0, -- 0 = opaque, 1 = fully see-through
@@ -434,11 +437,14 @@ local function Create(class: string, props, children: { Instance }?): any
 		inst[k] = v
 	end
 	-- track opaque surfaces so they can be made see-through globally
-	local okBT, bt = pcall(function() return inst.BackgroundTransparency end)
-	if okBT and type(bt) == "number" and bt < 1 then
-		table.insert(Surfaces, { inst = inst, base = bt })
-		if Config.Transparency and Config.Transparency > 0 then
-			inst.BackgroundTransparency = bt + (1 - bt) * Config.Transparency
+	-- (GuiObjects all have BackgroundTransparency; avoids a pcall per instance)
+	if inst:IsA("GuiObject") then
+		local bt = inst.BackgroundTransparency
+		if bt < 1 then
+			table.insert(Surfaces, { inst = inst, base = bt })
+			if Config.Transparency and Config.Transparency > 0 then
+				inst.BackgroundTransparency = bt + (1 - bt) * Config.Transparency
+			end
 		end
 	end
 	if themeTag then
@@ -694,15 +700,23 @@ if Config.CustomCursor then
 	})
 end
 
+-- Open popups follow their anchor each frame (negligible when none are open;
+-- needed so popups track the window while it is dragged).
 LibMaid:GiveTask(RunService.RenderStepped:Connect(function()
 	for _, fn in Anchors do
 		fn()
 	end
-	if CursorBg and CursorBg.Visible then
-		local m = MousePos()
-		CursorBg.Position = UDim2.fromOffset(m.X, m.Y)
-	end
 end))
+
+-- Custom cursor follows the pointer on movement only (event-driven, opt-in).
+if CursorBg then
+	LibMaid:GiveTask(Input.On("Changed", function(input)
+		if CursorBg.Visible and Input.isMove(input) then
+			local m = MousePos()
+			CursorBg.Position = UDim2.fromOffset(m.X, m.Y)
+		end
+	end))
+end
 
 local function CloseAllPopups(except)
 	for popup in OpenPopups do
@@ -839,8 +853,9 @@ local Tooltip = {} do
 	})
 
 	local active = false
-	LibMaid:GiveTask(RunService.RenderStepped:Connect(function()
-		if active then
+	-- follow the pointer only while a tooltip is shown and the mouse moves
+	LibMaid:GiveTask(Input.On("Changed", function(input)
+		if active and Input.isMove(input) then
 			local m = MousePos()
 			frame.Position = UDim2.fromOffset(m.X + 14, m.Y + 2)
 		end
@@ -849,6 +864,8 @@ local Tooltip = {} do
 	function Tooltip.Bind(gui: GuiObject, text: string, maid)
 		maid:GiveTask(gui.MouseEnter:Connect(function()
 			label.Text = text
+			local m = MousePos()
+			frame.Position = UDim2.fromOffset(m.X + 14, m.Y + 2) -- place immediately
 			frame.Visible = true
 			active = true
 		end))
