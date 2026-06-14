@@ -168,6 +168,15 @@ VibeUI:KeySystem({
 })
 ```
 
+## Mobile support
+
+VibeUI works on touch devices as well as PC. Buttons, tabs, dropdowns,
+sliders, the colorpicker, and window/widget dragging all accept touch input.
+On touch devices a **floating, draggable toggle button** appears (tap to
+open/close the menu, drag to reposition it) since there's no keyboard for the
+menu keybind — disable with `Config.MobileToggle = false`. Sliders and the
+colorpicker read the touch event's own position, so they track your finger.
+
 ## Theming
 
 `VibeUI:CreateSettingsPage` adds a **Theming** section: a preset dropdown

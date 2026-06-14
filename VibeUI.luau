@@ -137,6 +137,7 @@ local Config = {
 	NotificationSound = "rbxassetid://9080003278", -- played on each toast ("" to disable)
 	Transparency = 0, -- 0 = opaque, 1 = fully see-through
 	Scale        = 1, -- global UI scale
+	MobileToggle = true, -- show a floating open/close button on touch devices
 }
 
 local Folders = {
@@ -513,6 +514,17 @@ end
 local function MousePos(): Vector2
 	return UserInputService:GetMouseLocation() - GuiService:GetGuiInset()
 end
+
+-- Position from an actual input event (works for both mouse and touch), mapped
+-- into AbsolutePosition space. Falls back to the mouse location.
+local function InputPos(input): Vector2
+	if input and input.Position then
+		return Vector2.new(input.Position.X, input.Position.Y) - GuiService:GetGuiInset()
+	end
+	return MousePos()
+end
+
+local IsTouch = UserInputService.TouchEnabled
 
 local function isMouseOver(gui: Instance): boolean
 	local mp = MousePos()
@@ -1250,14 +1262,14 @@ function Components.Slider(data)
 	end
 
 	local sliding = false
-	local function setFromMouse()
-		local rel = (MousePos().X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X
+	local function setFrom(input)
+		local rel = (InputPos(input).X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X
 		self:Set(minV + (maxV - minV) * math.clamp(rel, 0, 1))
 	end
 	maid:GiveTask(bar.InputBegan:Connect(function(input)
 		if Input.isPrimary(input) then
 			sliding = true
-			setFromMouse()
+			setFrom(input)
 			local conn
 			conn = input.Changed:Connect(function()
 				if input.UserInputState == Enum.UserInputState.End then sliding = false conn:Disconnect() end
@@ -1265,7 +1277,7 @@ function Components.Slider(data)
 		end
 	end))
 	maid:GiveTask(Input.On("Changed", function(input)
-		if sliding and Input.isMove(input) then setFromMouse() end
+		if sliding and Input.isMove(input) then setFrom(input) end
 	end))
 	maid:GiveTask(container.MouseEnter:Connect(function()
 		Theme.Retag(bar, { BackgroundColor3 = "Hovered Element" })
@@ -1684,14 +1696,14 @@ function Components.Colorpicker(data)
 		if last then last.Completed:Once(done) else done() end
 	end
 
-	-- dragging the palette / hue / alpha. MousePos() (inset-corrected) shares the
-	-- GUIs' AbsolutePosition space, so the marker lands under the pointer.
+	-- dragging the palette / hue / alpha. InputPos() maps the event's own position
+	-- (mouse OR touch) into AbsolutePosition space, so the marker tracks the pointer.
 	local function bindDrag(button, onMove)
 		local active = false
 		maid:GiveTask(button.InputBegan:Connect(function(input)
 			if Input.isPrimary(input) then
 				active = true
-				onMove(MousePos())
+				onMove(InputPos(input))
 				local conn
 				conn = input.Changed:Connect(function()
 					if input.UserInputState == Enum.UserInputState.End then active = false conn:Disconnect() end
@@ -1699,7 +1711,7 @@ function Components.Colorpicker(data)
 			end
 		end))
 		maid:GiveTask(Input.On("Changed", function(input)
-			if active and Input.isMove(input) then onMove(MousePos()) end
+			if active and Input.isMove(input) then onMove(InputPos(input)) end
 		end))
 	end
 
@@ -2085,6 +2097,50 @@ function Library:Window(data: WindowConfig?)
 			window:SetOpen(not window.IsOpen)
 		end
 	end))
+
+	-- Mobile: a floating, draggable open/close button (no keyboard for the keybind)
+	if IsTouch and Config.MobileToggle then
+		local mb = Create("TextButton", { Parent = Holder, Text = "", AutoButtonColor = false,
+			AnchorPoint = Vector2.new(0, 0), Position = UDim2.fromOffset(14, 90), Size = UDim2.fromOffset(46, 46),
+			BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2, BackgroundColor3 = Color3.fromRGB(14, 17, 15),
+			ZIndex = 800, ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Accent" } })
+		Stroke(mb, "Accent")
+		Create("UICorner", { Parent = mb, CornerRadius = UDim.new(1, 0) })
+		maid:GiveTask(mb)
+		if hasLogo then
+			Create("ImageLabel", { Parent = mb, BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(26, 26), ScaleType = Enum.ScaleType.Fit,
+				Image = "rbxassetid://" .. data.Logo, ImageColor3 = Color3.fromRGB(202, 243, 255), ZIndex = 801,
+				ThemeTag = { ImageColor3 = "Accent" } })
+		else
+			for i = 0, 2 do -- hamburger glyph
+				Create("Frame", { Parent = mb, AnchorPoint = Vector2.new(0.5, 0.5),
+					Position = UDim2.new(0.5, 0, 0.5, (i - 1) * 7), Size = UDim2.fromOffset(22, 3), BorderSizePixel = 0,
+					ZIndex = 801, BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
+			end
+		end
+		-- tap toggles; drag relocates (so it never blocks gameplay)
+		local dragging, dragStart, startPos, moved = false, nil, nil, false
+		maid:GiveTask(mb.InputBegan:Connect(function(input)
+			if Input.isPrimary(input) then
+				dragging, moved, dragStart, startPos = true, false, input.Position, mb.Position
+				local conn
+				conn = input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then
+						dragging = false; conn:Disconnect()
+						if not moved then window:SetOpen(not window.IsOpen) end
+					end
+				end)
+			end
+		end))
+		maid:GiveTask(Input.On("Changed", function(input)
+			if dragging and Input.isMove(input) then
+				local delta = input.Position - dragStart
+				if delta.Magnitude > 6 then moved = true end
+				mb.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+			end
+		end))
+	end
 
 	-- tab button builders (one per layout; a tab makes both so layout can switch live)
 	local function makeSideTabBtn(name)
