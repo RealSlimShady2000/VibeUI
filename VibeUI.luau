@@ -496,6 +496,16 @@ local function MakeText(parent: Instance, text: string, props): TextLabel
 	return label
 end
 
+--- Effective background transparency for a surface whose opaque base is `base`,
+--- given the current global UI transparency.
+local function SurfaceAlpha(base: number): number
+	return base + (1 - base) * Config.Transparency
+end
+
+-- Functions that re-apply state-dependent transparency (e.g. the active tab,
+-- whose target differs from its tracked base). Run after the generic pass.
+local TransparencyRefreshers: { () -> () } = {}
+
 --- Make the whole UI see-through. alpha: 0 (opaque) … 1 (invisible).
 --- Lerps every tracked opaque surface and keeps fade animations in sync.
 local function ApplyTransparency(alpha: number)
@@ -503,11 +513,16 @@ local function ApplyTransparency(alpha: number)
 	for i = #Surfaces, 1, -1 do
 		local entry = Surfaces[i]
 		local ok = pcall(function()
-			local v = entry.base + (1 - entry.base) * Config.Transparency
+			local v = SurfaceAlpha(entry.base)
 			entry.inst.BackgroundTransparency = v
 			Tween.SetShown(entry.inst, "BackgroundTransparency", v)
 		end)
 		if not ok then table.remove(Surfaces, i) end -- prune destroyed instances
+	end
+	for i = #TransparencyRefreshers, 1, -1 do
+		if not pcall(TransparencyRefreshers[i]) then
+			table.remove(TransparencyRefreshers, i)
+		end
 	end
 end
 
@@ -1843,13 +1858,24 @@ function Library:Window(data: WindowConfig?)
 			switching = true
 			page.Visible = on
 			page.Parent = on and content or UnusedHolder
-			Tween.To(btn, { BackgroundTransparency = on and 0 or 0.6 })
+			-- respect global UI transparency: active base 0, inactive base 0.6
+			local btnTarget = SurfaceAlpha(on and 0 or 0.6)
+			Tween.To(btn, { BackgroundTransparency = btnTarget })
+			Tween.SetShown(btn, "BackgroundTransparency", btnTarget)
 			Tween.To(liner, { BackgroundTransparency = on and 0 or 1 })
 			Tween.To(label, { Position = UDim2.new(0, on and 13 or 8, 0.5, 0) })
 			if on then window.CurrentTab = tab end
 			local last = Tween.Fade(page, on, window.FadeTime)
 			if last then last.Completed:Once(function() switching = false end) else switching = false end
 		end
+
+		-- re-apply the correct (state-dependent) transparency when the global
+		-- UI transparency changes, so the active tab doesn't snap to its base.
+		table.insert(TransparencyRefreshers, function()
+			local t = SurfaceAlpha(tab.Active and 0 or 0.6)
+			btn.BackgroundTransparency = t
+			Tween.SetShown(btn, "BackgroundTransparency", t)
+		end)
 
 		maid:GiveTask(btn.MouseButton1Click:Connect(function()
 			if tab.Active then return end
