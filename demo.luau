@@ -61,6 +61,23 @@ World:Paragraph({ Name = "Note", Content =
 	"Paragraph elements wrap long text across multiple lines — great for descriptions, warnings or credits." })
 World:Button():Add("Reset world", function() print("reset") end)
 
+-- Toast notifications: one button per type
+local Notifs = Visuals:Section({ Name = "Notifications", Side = 1 })
+local row1 = Notifs:Button()
+row1:Add("Info", function()
+	VibeUI:Notification({ Title = "Info", Description = "Just so you know.", Type = "info", Duration = 4 })
+end)
+row1:Add("Success", function()
+	VibeUI:Notification({ Title = "Success", Description = "Operation completed.", Type = "success", Duration = 4 })
+end)
+local row2 = Notifs:Button()
+row2:Add("Warning", function()
+	VibeUI:Notification({ Title = "Warning", Description = "Something needs attention.", Type = "warning", Duration = 4 })
+end)
+row2:Add("Error", function()
+	VibeUI:Notification({ Title = "Error", Description = "That did not work — try again.", Type = "error", Duration = 5 })
+end)
+
 --======================================================================= Settings
 VibeUI:CreateSettingsPage(Window, Watermark, KeybindList)
 

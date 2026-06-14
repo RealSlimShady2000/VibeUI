@@ -127,6 +127,7 @@ local Config = {
 	MenuKeybind  = Enum.KeyCode.RightControl,
 	CustomCursor = true,
 	Rounded      = false,
+	NotificationSide = "BottomRight", -- BottomRight | BottomLeft | TopRight | TopLeft
 }
 
 local Folders = {
@@ -566,24 +567,35 @@ local UnusedHolder = Create("ScreenGui", {
 })
 LibMaid:GiveTask(UnusedHolder)
 
+-- Full-screen transparent layer; toasts are pushed to a configurable corner
+-- by the layout's alignment (see ApplyNotificationSide).
 local NotifHolder = Create("Frame", {
 	Parent = Holder,
 	BackgroundTransparency = 1,
-	Size = UDim2.new(0, 0, 1, 0),
-	AutomaticSize = Enum.AutomaticSize.X,
+	Size = UDim2.fromScale(1, 1),
 	BorderSizePixel = 0,
 })
-Create("UIListLayout", {
+local NotifLayout = Create("UIListLayout", {
 	Parent = NotifHolder,
 	VerticalAlignment = Enum.VerticalAlignment.Bottom,
+	HorizontalAlignment = Enum.HorizontalAlignment.Right,
 	Padding = UDim.new(0, 10),
 	SortOrder = Enum.SortOrder.LayoutOrder,
 })
 Create("UIPadding", {
 	Parent = NotifHolder,
-	PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 12),
-	PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
+	PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 14),
+	PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14),
 })
+
+local function ApplyNotificationSide(side: string)
+	Config.NotificationSide = side
+	NotifLayout.VerticalAlignment = (side == "TopRight" or side == "TopLeft")
+		and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Bottom
+	NotifLayout.HorizontalAlignment = (side == "TopLeft" or side == "BottomLeft")
+		and Enum.HorizontalAlignment.Left or Enum.HorizontalAlignment.Right
+end
+ApplyNotificationSide(Config.NotificationSide)
 
 --==============================================================================
 -- Anchored popup follow loop (single RenderStepped for all popups + cursor)
@@ -1957,53 +1969,122 @@ function Library:KeybindList()
 	return list
 end
 
-local NOTIF_ACCENT = {
-	info    = function() return Theme.Values.Accent end,
-	success = function() return Color3.fromRGB(120, 230, 150) end,
-	warning = function() return Color3.fromRGB(245, 205, 110) end,
-	error   = function() return Color3.fromRGB(245, 120, 120) end,
+local NOTIF_TYPES = {
+	info    = { color = function() return Theme.Values.Accent end,   glyph = "i" },
+	success = { color = function() return Color3.fromRGB(120, 230, 150) end, glyph = "✓" },
+	warning = { color = function() return Color3.fromRGB(245, 205, 110) end, glyph = "!" },
+	error   = { color = function() return Color3.fromRGB(245, 120, 120) end, glyph = "✕" },
 }
 
-function Library:Notification(title: string, description: string?, duration: number?, kind: string?)
-	duration = duration or 5
-	local accent = (NOTIF_ACCENT[kind] or NOTIF_ACCENT.info)()
+local NOTIF_WIDTH = 250
 
-	local frame = Create("Frame", { Parent = NotifHolder, Size = UDim2.fromOffset(0, 0),
-		AutomaticSize = Enum.AutomaticSize.XY, BorderSizePixel = 2, BackgroundTransparency = 1,
+--- Show a toast notification.
+--- Accepts either positional args `(title, description, duration, type)` or a
+--- single config table `{Title, Description, Duration, Type, Icon}`.
+--- `Type` is one of "info" | "success" | "warning" | "error".
+--- Returns a handle with `:Close()` to dismiss early.
+function Library:Notification(title, description: string?, duration: number?, kind: string?)
+	local cfg
+	if type(title) == "table" then
+		cfg = title
+	else
+		cfg = { Title = title, Description = description, Duration = duration, Type = kind }
+	end
+	local ntype = cfg.Type or "info"
+	duration = cfg.Duration or 5
+	local typeData = NOTIF_TYPES[ntype] or NOTIF_TYPES.info
+	local accent = typeData.color()
+
+	local frame = Create("Frame", { Parent = NotifHolder, Size = UDim2.fromOffset(NOTIF_WIDTH, 0),
+		AutomaticSize = Enum.AutomaticSize.Y, BorderSizePixel = 2, BackgroundTransparency = 1,
 		BorderColor3 = Color3.fromRGB(12, 12, 12), BackgroundColor3 = Color3.fromRGB(14, 17, 15),
-		ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
+		ClipsDescendants = true, ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
 	local s = Stroke(frame, "Outline"); s.Transparency = 1
 	Corner(frame)
-	Create("UIPadding", { Parent = frame, PaddingTop = UDim.new(0, 5), PaddingBottom = UDim.new(0, 10),
-		PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
-	local titleLabel = MakeText(frame, title, { AutomaticSize = Enum.AutomaticSize.XY,
-		TextXAlignment = Enum.TextXAlignment.Left, TextTransparency = 1 })
-	local descLabel
-	if description and description ~= "" then
-		descLabel = MakeText(frame, description, { Position = UDim2.fromOffset(0, 15),
-			AutomaticSize = Enum.AutomaticSize.XY, TextXAlignment = Enum.TextXAlignment.Left,
-			TextTransparency = 1, TextColor3 = Color3.fromRGB(185, 185, 185),
-			ThemeTag = { TextColor3 = "Placeholder Text" } })
+
+	-- full-height left accent stripe
+	local stripe = Create("Frame", { Parent = frame, Size = UDim2.new(0, 3, 1, 0), BorderSizePixel = 0,
+		BackgroundColor3 = accent, BackgroundTransparency = 1 })
+
+	-- type glyph (or custom icon)
+	local glyph
+	if cfg.Icon then
+		glyph = Create("ImageLabel", { Parent = frame, BackgroundTransparency = 1, ImageTransparency = 1,
+			Position = UDim2.fromOffset(12, 9), Size = UDim2.fromOffset(16, 16), Image = cfg.Icon, ImageColor3 = accent })
+	else
+		glyph = Create("TextLabel", { Parent = frame, BackgroundTransparency = 1, TextTransparency = 1,
+			Position = UDim2.fromOffset(10, 7), Size = UDim2.fromOffset(16, 16), FontFace = GetFont(),
+			Text = typeData.glyph, TextSize = 14, TextColor3 = accent })
 	end
-	local liner = Create("Frame", { Parent = frame, Position = UDim2.new(0, 0, 1, 6),
-		Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0, BackgroundColor3 = accent, BackgroundTransparency = 1 })
+
+	-- content column (auto-stacks title / description / progress)
+	local content = Create("Frame", { Parent = frame, BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(34, 8), Size = UDim2.new(1, -44, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	Create("UIListLayout", { Parent = content, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder })
+
+	local titleLabel = MakeText(content, cfg.Title or "", { Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+		TextTransparency = 1, LayoutOrder = 1 })
+	local descLabel
+	if cfg.Description and cfg.Description ~= "" then
+		descLabel = MakeText(content, cfg.Description, { Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+			TextTransparency = 1, TextColor3 = Color3.fromRGB(185, 185, 185),
+			ThemeTag = { TextColor3 = "Placeholder Text" }, LayoutOrder = 2 })
+	end
+
+	-- progress bar (shrinks over the duration), then a small bottom spacer
+	local progress = Create("Frame", { Parent = content, Size = UDim2.new(1, 0, 0, 2), BorderSizePixel = 0,
+		BackgroundColor3 = accent, BackgroundTransparency = 1, LayoutOrder = 3 })
+	Create("Frame", { Parent = content, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 2), LayoutOrder = 4 })
+
+	local closed = false
+	local handle = {}
+
+	function handle:Close()
+		if closed then return end
+		closed = true
+		-- freeze height so the collapse tween isn't fought by AutomaticSize.Y
+		local h = frame.AbsoluteSize.Y
+		frame.AutomaticSize = Enum.AutomaticSize.None
+		frame.Size = UDim2.fromOffset(NOTIF_WIDTH, h)
+		Tween.To(frame, { BackgroundTransparency = 1 })
+		Tween.To(s, { Transparency = 1 })
+		Tween.To(stripe, { BackgroundTransparency = 1 })
+		Tween.To(glyph, glyph:IsA("ImageLabel") and { ImageTransparency = 1 } or { TextTransparency = 1 })
+		Tween.To(titleLabel, { TextTransparency = 1 })
+		if descLabel then Tween.To(descLabel, { TextTransparency = 1 }) end
+		Tween.To(progress, { BackgroundTransparency = 1 })
+		Tween.To(frame, { Size = UDim2.fromOffset(NOTIF_WIDTH, 0) })
+		task.delay(0.35, function() frame:Destroy() end)
+	end
 
 	-- fade in
 	Tween.To(frame, { BackgroundTransparency = 0 })
 	Tween.To(s, { Transparency = 0 })
+	Tween.To(stripe, { BackgroundTransparency = 0 })
+	Tween.To(glyph, glyph:IsA("ImageLabel") and { ImageTransparency = 0 } or { TextTransparency = 0 })
 	Tween.To(titleLabel, { TextTransparency = 0 })
-	if descLabel then Tween.To(descLabel, { TextTransparency = 0.3 }) end
-	liner.BackgroundTransparency = 0
-	Tween.To(liner, { Size = UDim2.new(0, 0, 0, 1) }, Tween.Info(duration, Enum.EasingStyle.Linear))
+	if descLabel then Tween.To(descLabel, { TextTransparency = 0.25 }) end
+	progress.BackgroundTransparency = 0
+	Tween.To(progress, { Size = UDim2.new(0, 0, 0, 2) }, Tween.Info(duration, Enum.EasingStyle.Linear))
 
-	task.delay(duration + 0.1, function()
-		Tween.To(frame, { BackgroundTransparency = 1 })
-		Tween.To(s, { Transparency = 1 })
-		Tween.To(titleLabel, { TextTransparency = 1 })
-		if descLabel then Tween.To(descLabel, { TextTransparency = 1 }) end
-		Tween.To(liner, { BackgroundTransparency = 1 })
-		task.delay(0.4, function() frame:Destroy() end)
-	end)
+	-- click to dismiss
+	local btn = Create("TextButton", { Parent = frame, Text = "", BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1), ZIndex = 5 })
+	btn.MouseButton1Click:Connect(function() handle:Close() end)
+
+	if duration > 0 then
+		task.delay(duration + 0.05, function() handle:Close() end)
+	end
+
+	return handle
+end
+
+--- Set the screen corner toasts appear in.
+--- side: "BottomRight" | "BottomLeft" | "TopRight" | "TopLeft"
+function Library:SetNotificationSide(side: string)
+	ApplyNotificationSide(side)
 end
 
 --==============================================================================
@@ -2088,6 +2169,12 @@ function Library:CreateSettingsPage(window, watermark, keybindList)
 			Config.CustomCursor = v
 			if CursorBg then CursorBg.Visible = v end
 			UserInputService.MouseIconEnabled = not v
+		end })
+	settingsSection:Dropdown({ Name = "Notifications", Flag = "NotifSide",
+		Items = { "BottomRight", "BottomLeft", "TopRight", "TopLeft" }, Default = Config.NotificationSide,
+		Callback = function(v)
+			ApplyNotificationSide(v)
+			Library:Notification({ Title = "Notifications", Description = "Now anchored " .. v, Type = "info", Duration = 3 })
 		end })
 	settingsSection:Slider({ Name = "Fade time", Flag = "FadeTime", Min = 0, Max = 1, Decimals = 0.01,
 		Default = Config.FadeSpeed, Callback = function(v) Config.FadeSpeed = v end })

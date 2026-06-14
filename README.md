@@ -47,7 +47,8 @@ The menu toggles with **Right Ctrl** by default (configurable in Settings).
 | `VibeUI:Window(config)` | Create the main window. Returns a `Window`. |
 | `VibeUI:Watermark(text)` | Draggable watermark. `:SetText` / `:SetVisibility`. |
 | `VibeUI:KeybindList()` | Active-keybind list (call before creating keybinds). |
-| `VibeUI:Notification(title, desc?, duration?, kind?)` | Toast. `kind`: `"info"`/`"success"`/`"warning"`/`"error"`. |
+| `VibeUI:Notification(...)` | Toast. See **Notifications** below. Returns a handle with `:Close()`. |
+| `VibeUI:SetNotificationSide(side)` | `"BottomRight"`/`"BottomLeft"`/`"TopRight"`/`"TopLeft"`. |
 | `VibeUI:CreateSettingsPage(window, watermark?, keybindList?)` | Adds a Theming/Configs/Interface tab. |
 | `VibeUI:GetConfig()` / `:LoadConfig(json)` | Serialize / apply all flags. |
 | `VibeUI:ListConfigs()` / `:SaveConfig(name)` / `:DeleteConfig(name)` / `:ReadConfig(name)` | Config files (no-ops without a filesystem). |
@@ -84,6 +85,30 @@ on a Toggle or Label. Full HSV palette + hue + alpha. `:Get()` → `color, alpha
 `:AddKeybind({ Flag, Default = Enum.KeyCode, Mode = "Toggle"|"Hold"|"Always", Callback(toggled) })`
 on a Toggle or Label. Left-click to rebind, right-click for the mode menu.
 `:Get()` → `key, mode, toggled`.
+
+## Notifications
+
+A dedicated toast system. Toasts stack in a configurable screen corner
+(default bottom-right), show a type-coloured accent stripe + glyph, wrap long
+text, run a shrinking progress bar, dismiss on click, and auto-close after
+`Duration` seconds. Call it two ways:
+
+```lua
+-- positional (quick)
+VibeUI:Notification("Saved", "Config written to disk", 4, "success")
+
+-- config table (full control) — returns a handle
+local toast = VibeUI:Notification({
+    Title       = "Update available",
+    Description  = "A new version of the script is out.",
+    Type        = "info",      -- "info" | "success" | "warning" | "error"
+    Duration    = 6,           -- seconds; use 0 to require manual close
+    Icon        = "rbxassetid://...", -- optional, replaces the type glyph
+})
+toast:Close()  -- dismiss early
+
+VibeUI:SetNotificationSide("TopRight")  -- move the stack
+```
 
 ## Theming
 
