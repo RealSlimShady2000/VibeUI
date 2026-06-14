@@ -34,6 +34,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local TweenService     = game:GetService("TweenService")
 local HttpService      = game:GetService("HttpService")
+local GuiService       = game:GetService("GuiService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -475,8 +476,15 @@ local function Corner(parent: Instance, radius: number?)
 	Create("UICorner", { Parent = parent, CornerRadius = UDim.new(0, radius or 4) })
 end
 
+-- GetMouseLocation() is GUI-inset-adjusted; AbsolutePosition is full-screen.
+-- Add the inset so mouse maths line up with GUI coordinates (fixes the ~36px
+-- vertical drift on the colorpicker palette and the custom cursor).
+local function MousePos(): Vector2
+	return UserInputService:GetMouseLocation() + GuiService:GetGuiInset()
+end
+
 local function isMouseOver(gui: Instance): boolean
-	local mp = UserInputService:GetMouseLocation()
+	local mp = MousePos()
 	local p, s = gui.AbsolutePosition, gui.AbsoluteSize
 	return mp.X >= p.X and mp.X <= p.X + s.X and mp.Y >= p.Y and mp.Y <= p.Y + s.Y
 end
@@ -672,7 +680,7 @@ LibMaid:GiveTask(RunService.RenderStepped:Connect(function()
 		fn()
 	end
 	if CursorBg and CursorBg.Visible then
-		local m = UserInputService:GetMouseLocation()
+		local m = MousePos()
 		CursorBg.Position = UDim2.fromOffset(m.X, m.Y)
 	end
 end))
@@ -814,7 +822,7 @@ local Tooltip = {} do
 	local active = false
 	LibMaid:GiveTask(RunService.RenderStepped:Connect(function()
 		if active then
-			local m = UserInputService:GetMouseLocation()
+			local m = MousePos()
 			frame.Position = UDim2.fromOffset(m.X + 14, m.Y + 2)
 		end
 	end))
@@ -1104,7 +1112,7 @@ function Components.Slider(data)
 
 	local sliding = false
 	local function setFromMouse()
-		local rel = (UserInputService:GetMouseLocation().X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X
+		local rel = (MousePos().X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X
 		self:Set(minV + (maxV - minV) * math.clamp(rel, 0, 1))
 	end
 	maid:GiveTask(bar.InputBegan:Connect(function(input)
@@ -1251,15 +1259,16 @@ function Components.Dropdown(data)
 	local valueText = MakeText(box, "--", { AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.new(1, -28, 0, 15),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+	-- chevron points down when closed (asset's natural orientation is right → +90)
 	local icon = Create("ImageLabel", { Parent = box, AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -3, 0.5, 0), Size = UDim2.fromOffset(18, 18), BackgroundTransparency = 1,
-		ScaleType = Enum.ScaleType.Fit, Image = "rbxassetid://113229176886493",
+		Position = UDim2.new(1, -5, 0.5, 0), Size = UDim2.fromOffset(14, 14), BackgroundTransparency = 1,
+		Rotation = 90, ScaleType = Enum.ScaleType.Fit, Image = "rbxassetid://113229176886493",
 		ImageColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { ImageColor3 = "Accent" } })
 
 	local popup = CreatePopup(box, maid)
-	Create("UIPadding", { Parent = popup.Frame, PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
-		PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 6) })
-	Create("UIListLayout", { Parent = popup.Frame, Padding = UDim.new(0, 3),
+	Create("UIPadding", { Parent = popup.Frame, PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
+		PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4) })
+	Create("UIListLayout", { Parent = popup.Frame, Padding = UDim.new(0, 2),
 		SortOrder = Enum.SortOrder.LayoutOrder })
 
 	local searchInput
@@ -1286,16 +1295,17 @@ function Components.Dropdown(data)
 	function self:SetOpen(b)
 		popup:SetOpen(b)
 		self.IsOpen = popup.IsOpen
-		Tween.To(icon, { Rotation = popup.IsOpen and -90 or 0 })
+		Tween.To(icon, { Rotation = popup.IsOpen and 270 or 90 }) -- down (closed) ↔ up (open)
 	end
 
 	local function toggleOption(opt, active)
+		opt.Selected = active
 		if active then
 			Theme.Retag(opt.Button, { TextColor3 = "Accent" })
-			Tween.To(opt.Button, { TextColor3 = Theme.Values.Accent })
+			Tween.To(opt.Button, { TextColor3 = Theme.Values.Accent, BackgroundTransparency = 0.88 })
 		else
 			Theme.Retag(opt.Button, { TextColor3 = "Text" })
-			Tween.To(opt.Button, { TextColor3 = Theme.Values.Text })
+			Tween.To(opt.Button, { TextColor3 = Theme.Values.Text, BackgroundTransparency = 1 })
 		end
 	end
 
@@ -1325,9 +1335,18 @@ function Components.Dropdown(data)
 	function self:Add(name: string)
 		local btn = Create("TextButton", { Parent = popup.Frame, FontFace = GetFont(), TextSize = 12,
 			Text = name, AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0,
-			TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 15), ZIndex = 51,
-			TextColor3 = Color3.fromRGB(235, 235, 235), ThemeTag = { TextColor3 = "Text" } })
+			TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 20), ZIndex = 51,
+			TextColor3 = Color3.fromRGB(235, 235, 235), BackgroundColor3 = Color3.fromRGB(37, 42, 45),
+			ThemeTag = { TextColor3 = "Text", BackgroundColor3 = "Hovered Element" } })
+		Create("UIPadding", { Parent = btn, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
+		Corner(btn, 3)
 		local opt = { Button = btn, Name = name, Selected = false }
+		maid:GiveTask(btn.MouseEnter:Connect(function()
+			if not opt.Selected then Tween.To(btn, { BackgroundTransparency = 0.5 }) end
+		end))
+		maid:GiveTask(btn.MouseLeave:Connect(function()
+			if not opt.Selected then Tween.To(btn, { BackgroundTransparency = 1 }) end
+		end))
 		maid:GiveTask(btn.MouseButton1Click:Connect(function()
 			if data.Multi then
 				local idx = table.find(self.Value, name)
@@ -1545,7 +1564,7 @@ function Components.Colorpicker(data)
 	end
 
 	bindDrag(palette, function()
-		local m = UserInputService:GetMouseLocation()
+		local m = MousePos()
 		local sx = math.clamp((m.X - palette.AbsolutePosition.X) / palette.AbsoluteSize.X, 0, 1)
 		local sy = math.clamp((m.Y - palette.AbsolutePosition.Y) / palette.AbsoluteSize.Y, 0, 1)
 		self.Sat, self.Val = sx, 1 - sy
@@ -1553,14 +1572,14 @@ function Components.Colorpicker(data)
 		update(false)
 	end)
 	bindDrag(hue, function()
-		local m = UserInputService:GetMouseLocation()
+		local m = MousePos()
 		local hy = math.clamp((m.Y - hue.AbsolutePosition.Y) / hue.AbsoluteSize.Y, 0, 1)
 		self.Hue = hy
 		hueDot.Position = UDim2.fromScale(0, math.min(hy, 0.995))
 		update(false)
 	end)
 	bindDrag(alpha, function()
-		local m = UserInputService:GetMouseLocation()
+		local m = MousePos()
 		local ax = math.clamp((m.X - alpha.AbsolutePosition.X) / alpha.AbsoluteSize.X, 0, 1)
 		self.Alpha = ax
 		alphaDot.Position = UDim2.fromScale(math.min(ax, 0.995), 0)
@@ -1982,12 +2001,17 @@ function Library:Watermark(text: string)
 	Stroke(frame, "Outline")
 	Corner(frame)
 	MakeDraggable(frame, frame, maid)
-	Create("Frame", { Parent = frame, Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0,
-		BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
-	Create("UIPadding", { Parent = frame, PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
-		PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
-	local label = MakeText(frame, text, { AutomaticSize = Enum.AutomaticSize.XY,
-		TextXAlignment = Enum.TextXAlignment.Left })
+	Create("UIPadding", { Parent = frame, PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7),
+		PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12) })
+	Create("UIListLayout", { Parent = frame, FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 9),
+		SortOrder = Enum.SortOrder.LayoutOrder })
+	-- accent tick before the text
+	local bar = Create("Frame", { Parent = frame, Size = UDim2.fromOffset(3, 14), BorderSizePixel = 0,
+		LayoutOrder = 0, BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
+	Create("UICorner", { Parent = bar, CornerRadius = UDim.new(0, 2) })
+	local label = MakeText(frame, text, { AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 1,
+		TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left })
 	return {
 		SetText = function(_, t) label.Text = t end,
 		SetVisibility = function(_, b) frame.Visible = b end,
