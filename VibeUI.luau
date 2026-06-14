@@ -718,27 +718,13 @@ function Library:GetImage(name: string): string
 	return ""
 end
 
--- Custom Monaco font (falls back to Enum.Font.Code without a filesystem)
-if HasFileSystem and getcustomasset then
-	pcall(function()
-		local jsonPath = Folders.Assets .. "/Monaco.json"
-		local ttfPath  = Folders.Assets .. "/Monaco.ttf"
-		if not isfile(ttfPath) then
-			writefile(ttfPath, httpget("https://github.com/sametexe001/luas/raw/refs/heads/main/fonts/Monaco.ttf"))
-		end
-		if not isfile(jsonPath) then
-			writefile(jsonPath, HttpService:JSONEncode({
-				name = "Monaco",
-				faces = { { name = "Regular", weight = 400, style = "normal", assetId = getcustomasset(ttfPath) } },
-			}))
-		end
-		Library.Font = Font.new(getcustomasset(jsonPath))
-	end)
-end
+-- Default UI font: a clean, smooth sans. Set `Library.Font` (a Font object)
+-- before building the window to override.
+Library.Font = Library.Font or Font.fromEnum(Enum.Font.Gotham)
 
 -- assign the forward-declared GetFont (do NOT redeclare with `local`)
 function GetFont(): Font
-	return Library.Font or Font.fromEnum(Enum.Font.Code)
+	return Library.Font or Font.fromEnum(Enum.Font.Gotham)
 end
 
 --==============================================================================
@@ -919,11 +905,14 @@ function Components.Toggle(data)
 		AutomaticSize = Enum.AutomaticSize.X,
 	})
 
+	-- sub-elements (colorpicker/keybind) sit flush against the right edge so
+	-- they never overlap the label text regardless of its width.
 	local sub = Create("Frame", {
 		Parent = row, BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X,
-		Size = UDim2.new(0, 0, 1, 0), Position = UDim2.new(0, text.TextBounds.X + 30, 0, 0),
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.new(0, 0, 1, 0),
 	})
 	Create("UIListLayout", { Parent = sub, FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
 		VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6),
 		SortOrder = Enum.SortOrder.LayoutOrder })
 
@@ -1094,10 +1083,12 @@ function Components.Label(data)
 		Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.new(1, 0, 0, 15),
 		TextXAlignment = Enum.TextXAlignment.Left, AutomaticSize = Enum.AutomaticSize.X })
 
+	-- right-anchored so colorpicker/keybind sub-elements never overlap the text.
 	local sub = Create("Frame", { Parent = container, BackgroundTransparency = 1,
-		AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
-		Position = UDim2.new(0, text.TextBounds.X + 8, 0, 0) })
+		AutomaticSize = Enum.AutomaticSize.X, AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.new(0, 0, 1, 0) })
 	Create("UIListLayout", { Parent = sub, FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
 		VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6),
 		SortOrder = Enum.SortOrder.LayoutOrder })
 
