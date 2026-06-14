@@ -1667,17 +1667,22 @@ function Components.Colorpicker(data)
 		if last then last.Completed:Once(done) else done() end
 	end
 
-	-- dragging the palette / hue / alpha. MousePos() (GetMouseLocation) is verified
-	-- to live in the same space as AbsolutePosition, so the marker tracks the mouse.
+	-- dragging the palette / hue / alpha. Use the InputObject's own Position (the
+	-- exact hit-tested point) so the marker lands under the pointer. Mouse-move
+	-- events during a drag also carry Position; MousePos() is the fallback.
 	local function bindDrag(button, onMove)
 		local active = false
-		local function run()
-			onMove(MousePos())
+		local function run(input)
+			if input and input.Position then
+				onMove(Vector2.new(input.Position.X, input.Position.Y))
+			else
+				onMove(MousePos())
+			end
 		end
 		maid:GiveTask(button.InputBegan:Connect(function(input)
 			if Input.isPrimary(input) then
 				active = true
-				run()
+				run(input)
 				local conn
 				conn = input.Changed:Connect(function()
 					if input.UserInputState == Enum.UserInputState.End then active = false conn:Disconnect() end
@@ -1685,7 +1690,7 @@ function Components.Colorpicker(data)
 			end
 		end))
 		maid:GiveTask(Input.On("Changed", function(input)
-			if active and Input.isMove(input) then run() end
+			if active and Input.isMove(input) then run(input) end
 		end))
 	end
 
