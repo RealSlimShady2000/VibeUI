@@ -2303,9 +2303,10 @@ end
 function Library:KeybindList()
 	local list = {}
 	Library.KeyList = list
+	-- auto-sizes to its widest entry (min width keeps it tidy when empty)
 	local frame = Create("Frame", { Parent = Holder, AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 12, 0.5, 55), Size = UDim2.fromOffset(140, 32), BorderSizePixel = 2,
-		AutomaticSize = Enum.AutomaticSize.Y, BorderColor3 = Color3.fromRGB(12, 12, 12),
+		Position = UDim2.new(0, 12, 0.5, 55), Size = UDim2.fromOffset(120, 0), BorderSizePixel = 2,
+		AutomaticSize = Enum.AutomaticSize.XY, BorderColor3 = Color3.fromRGB(12, 12, 12),
 		BackgroundColor3 = Color3.fromRGB(14, 17, 15),
 		ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
 	Stroke(frame, "Outline")
@@ -2313,17 +2314,18 @@ function Library:KeybindList()
 	MakeDraggable(frame, frame, LibMaid)
 	Create("UIPadding", { Parent = frame, PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 8),
 		PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
-	MakeText(frame, "Keybinds", { Size = UDim2.new(1, 0, 0, 14), TextXAlignment = Enum.TextXAlignment.Left })
+	MakeText(frame, "Keybinds", { Size = UDim2.new(0, 0, 0, 14), AutomaticSize = Enum.AutomaticSize.X,
+		TextXAlignment = Enum.TextXAlignment.Left })
 	Create("Frame", { Parent = frame, Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, 0, 0, 1),
 		AnchorPoint = Vector2.new(0, 0), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(202, 243, 255),
 		ThemeTag = { BackgroundColor3 = "Accent" } })
 	local body = Create("Frame", { Parent = frame, BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 18),
-		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+		Size = UDim2.new(0, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.XY })
 	Create("UIListLayout", { Parent = body, SortOrder = Enum.SortOrder.LayoutOrder })
 
 	function list:Add(key, name, mode)
 		local entry = MakeText(body, ("%s - %s (%s)"):format(key, name, mode), {
-			Size = UDim2.new(1, 0, 0, 15), AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(0, 0, 0, 15), AutomaticSize = Enum.AutomaticSize.X,
 			TextXAlignment = Enum.TextXAlignment.Left, Visible = false, TextTransparency = 1 })
 		local item = { Instance = entry }
 		-- Entry is shown whenever a key is bound (not "None"); it does NOT hide when
