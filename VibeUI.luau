@@ -2484,22 +2484,25 @@ function Library:UserProfile(opts)
 		BackgroundColor3 = Color3.fromRGB(14, 17, 15), ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
 	Stroke(frame, "Outline"); Corner(frame, 6); trackScale(frame)
 	MakeDraggable(frame, frame, LibMaid)
-	Create("Frame", { Parent = frame, AnchorPoint = Vector2.new(0, 0), Position = UDim2.new(0, 0, 0, 0),
-		Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(202, 243, 255),
-		ThemeTag = { BackgroundColor3 = "Accent" } })
-	Create("UIPadding", { Parent = frame, PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7),
-		PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 12) })
-	Create("UIListLayout", { Parent = frame, FillDirection = Enum.FillDirection.Horizontal,
-		VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 9), SortOrder = Enum.SortOrder.LayoutOrder })
+	-- accent stripe at the top, OUTSIDE the content layout (full width, ignores padding)
+	Create("Frame", { Parent = frame, Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, 0, 0, 1),
+		BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
 
-	local avatarHolder = Create("Frame", { Parent = frame, Size = UDim2.fromOffset(38, 38), LayoutOrder = 0,
+	-- content row holds the layout so the stripe above isn't treated as a flow item
+	local content = Create("Frame", { Parent = frame, BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X,
+		Position = UDim2.fromOffset(8, 7), Size = UDim2.new(0, 0, 1, -14) })
+	Create("UIListLayout", { Parent = content, FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 9), SortOrder = Enum.SortOrder.LayoutOrder })
+	Create("UIPadding", { Parent = content, PaddingRight = UDim.new(0, 12) })
+
+	local avatarHolder = Create("Frame", { Parent = content, Size = UDim2.fromOffset(38, 38), LayoutOrder = 0,
 		BackgroundColor3 = Color3.fromRGB(20, 24, 21), BorderSizePixel = 0, ThemeTag = { BackgroundColor3 = "Inline" } })
 	Create("UICorner", { Parent = avatarHolder, CornerRadius = UDim.new(1, 0) })
 	local avatar = Create("ImageLabel", { Parent = avatarHolder, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
 		Image = "", ScaleType = Enum.ScaleType.Crop })
 	Create("UICorner", { Parent = avatar, CornerRadius = UDim.new(1, 0) })
 
-	local textCol = Create("Frame", { Parent = frame, BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X,
+	local textCol = Create("Frame", { Parent = content, BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X,
 		Size = UDim2.fromOffset(0, 38), LayoutOrder = 1 })
 	Create("UIListLayout", { Parent = textCol, VerticalAlignment = Enum.VerticalAlignment.Center,
 		Padding = UDim.new(0, 1), SortOrder = Enum.SortOrder.LayoutOrder })
