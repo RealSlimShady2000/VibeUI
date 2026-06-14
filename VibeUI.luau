@@ -130,6 +130,7 @@ local Config = {
 	-- renders below native resolution or under display scaling. Opt-in only.
 	CustomCursor = false,
 	Rounded      = false,
+	Outlines     = true, -- element border outlines (toggle off for a flatter look)
 	NotificationSide = "BottomRight", -- BottomRight | BottomLeft | TopRight | TopLeft
 	Transparency = 0, -- 0 = opaque, 1 = fully see-through
 }
@@ -463,8 +464,11 @@ end
 
 local GetFont -- forward-declared; resolves the loaded custom font or a fallback
 
+-- Border outlines (from Stroke()) tracked so they can be toggled off as a theme option.
+local BorderStrokes: { { inst: Instance, base: number } } = {}
+
 local function Stroke(parent: Instance, key: string?, transparency: number?): Instance
-	return Create("UIStroke", {
+	local s = Create("UIStroke", {
 		Parent = parent,
 		Thickness = 1,
 		Transparency = transparency or 0,
@@ -472,6 +476,13 @@ local function Stroke(parent: Instance, key: string?, transparency: number?): In
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		ThemeTag = { Color = key or "Outline" },
 	})
+	local border = parent:IsA("GuiObject") and parent.BorderSizePixel or 0
+	table.insert(BorderStrokes, { inst = s, base = transparency or 0, parent = parent, border = border })
+	if not Config.Outlines then
+		s.Transparency = 1
+		if parent:IsA("GuiObject") then parent.BorderSizePixel = 0 end
+	end
+	return s
 end
 
 local function TextStroke(parent: Instance): Instance
@@ -1610,13 +1621,19 @@ function Components.Colorpicker(data)
 		if last then last.Completed:Once(done) else done() end
 	end
 
-	-- dragging the palette / hue / alpha
+	-- dragging the palette / hue / alpha. We use the InputObject's own Position
+	-- (the exact point used for hit-testing) so the marker lands under the click
+	-- regardless of cursor rendering / display scaling. Falls back to MousePos.
 	local function bindDrag(button, onMove)
 		local active = false
+		local function run(input)
+			local pos = (input and input.Position) and Vector2.new(input.Position.X, input.Position.Y) or MousePos()
+			onMove(pos)
+		end
 		maid:GiveTask(button.InputBegan:Connect(function(input)
 			if Input.isPrimary(input) then
 				active = true
-				onMove()
+				run(input)
 				local conn
 				conn = input.Changed:Connect(function()
 					if input.UserInputState == Enum.UserInputState.End then active = false conn:Disconnect() end
@@ -1624,27 +1641,24 @@ function Components.Colorpicker(data)
 			end
 		end))
 		maid:GiveTask(Input.On("Changed", function(input)
-			if active and Input.isMove(input) then onMove() end
+			if active and Input.isMove(input) then run(input) end
 		end))
 	end
 
-	bindDrag(palette, function()
-		local m = MousePos()
+	bindDrag(palette, function(m)
 		local sx = math.clamp((m.X - palette.AbsolutePosition.X) / palette.AbsoluteSize.X, 0, 1)
 		local sy = math.clamp((m.Y - palette.AbsolutePosition.Y) / palette.AbsoluteSize.Y, 0, 1)
 		self.Sat, self.Val = sx, 1 - sy
 		paletteDot.Position = UDim2.fromScale(sx, sy)
 		update(false)
 	end)
-	bindDrag(hue, function()
-		local m = MousePos()
+	bindDrag(hue, function(m)
 		local hy = math.clamp((m.Y - hue.AbsolutePosition.Y) / hue.AbsoluteSize.Y, 0, 1)
 		self.Hue = hy
 		hueDot.Position = UDim2.fromScale(0, math.min(hy, 0.995))
 		update(false)
 	end)
-	bindDrag(alpha, function()
-		local m = MousePos()
+	bindDrag(alpha, function(m)
 		local ax = math.clamp((m.X - alpha.AbsolutePosition.X) / alpha.AbsoluteSize.X, 0, 1)
 		self.Alpha = ax
 		alphaDot.Position = UDim2.fromScale(math.min(ax, 0.995), 0)
@@ -2353,6 +2367,21 @@ function Library:SetTransparency(alpha: number)
 	ApplyTransparency(alpha)
 end
 
+--- Toggle element border outlines on/off (a flatter look when off).
+function Library:SetOutlines(on: boolean)
+	Config.Outlines = on
+	for i = #BorderStrokes, 1, -1 do
+		local e = BorderStrokes[i]
+		local ok = pcall(function()
+			e.inst.Transparency = on and e.base or 1
+			if e.parent and e.parent:IsA("GuiObject") then
+				e.parent.BorderSizePixel = on and e.border or 0
+			end
+		end)
+		if not ok then table.remove(BorderStrokes, i) end
+	end
+end
+
 --==============================================================================
 -- Overlays: Loader, MessageBox, KeySystem
 --==============================================================================
@@ -2558,6 +2587,8 @@ function Library:CreateSettingsPage(window, watermark, keybindList)
 		Callback = function(name)
 			if Presets[name] then Theme.Load(Presets[name]) end
 		end })
+	themeSection:Toggle({ Name = "Outlines", Flag = "Outlines", Default = Config.Outlines,
+		Callback = function(v) Library:SetOutlines(v) end })
 
 	local colorsSection = tab:Section({ Name = "Theme colors", Side = 1 })
 	for key, value in Theme.Values do

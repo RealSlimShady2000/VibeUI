@@ -50,6 +50,7 @@ The menu toggles with **Right Ctrl** by default (configurable in Settings).
 | `VibeUI:Notification(...)` | Toast. See **Notifications** below. Returns a handle with `:Close()`. |
 | `VibeUI:SetNotificationSide(side)` | `"BottomRight"`/`"BottomLeft"`/`"TopRight"`/`"TopLeft"`. |
 | `VibeUI:SetTransparency(alpha)` | Make the whole UI see-through. `0` = opaque … `1` = invisible. Also a Settings slider. |
+| `VibeUI:SetOutlines(bool)` | Toggle element border outlines for a flatter look. Also a Theme toggle. |
 | `VibeUI:Loader(opts)` | Loading screen. See **Overlays** below. |
 | `VibeUI:MessageBox(opts)` | Modal message box with buttons. See **Overlays**. |
 | `VibeUI:KeySystem(opts)` | Key gate with a `Validate` hook for auth/whitelisting. See **Overlays**. |
