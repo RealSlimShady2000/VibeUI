@@ -547,6 +547,19 @@ local function MakeText(parent: Instance, text: string, props): TextLabel
 	return label
 end
 
+-- Highlight a text input's border (accent) while it's focused, so it's obvious
+-- which field is active / editable.
+local function FocusHighlight(box: TextBox, stroke: Instance, maid)
+	maid:GiveTask(box.Focused:Connect(function()
+		Theme.Retag(stroke, { Color = "Accent" })
+		Tween.To(stroke, { Color = Theme.Values.Accent, Transparency = 0 })
+	end))
+	maid:GiveTask(box.FocusLost:Connect(function()
+		Theme.Retag(stroke, { Color = "Outline" })
+		Tween.To(stroke, { Color = Theme.Values.Outline })
+	end))
+end
+
 --- Effective background transparency for a surface whose opaque base is `base`,
 --- given the current global UI transparency.
 local function SurfaceAlpha(base: number): number
@@ -1062,9 +1075,9 @@ local function ElementSkin(parent, height)
 			return ColorSequence.new(Color3.fromRGB(255,255,255), Theme.Values.Gradient)
 		end },
 	})
-	Stroke(btn, "Outline")
+	local stroke = Stroke(btn, "Outline")
 	Corner(btn)
-	return btn
+	return btn, stroke
 end
 
 ----------------------------------------------------------------- InfoMarker ---
@@ -1097,13 +1110,14 @@ function Components.Toggle(data)
 	local maid = data.Maid
 	local self = { Value = false, Flag = data.Flag }
 
+	-- row grows vertically when the name wraps (responsive at any width)
 	local row = Create("TextButton", {
 		Parent = data.Parent, Text = "", AutoButtonColor = false,
-		Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 15), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0,
 	})
 
 	local box = Create("Frame", {
-		Parent = row, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0),
+		Parent = row, AnchorPoint = Vector2.new(0, 0), Position = UDim2.new(0, 0, 0, 0),
 		Size = UDim2.fromOffset(14, 14), BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2,
 		BackgroundColor3 = Color3.fromRGB(30, 36, 31),
 		ThemeTag = { BackgroundColor3 = "Element", BorderColor3 = "Border" },
@@ -1117,17 +1131,17 @@ function Components.Toggle(data)
 		ImageColor3 = Color3.fromRGB(0, 0, 0),
 	})
 
+	-- name wraps within the available width instead of clipping off the edge
 	local text = MakeText(row, data.Name or "Toggle", {
-		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 22, 0.5, 0),
-		Size = UDim2.new(1, -22, 0, 15), TextXAlignment = Enum.TextXAlignment.Left,
-		AutomaticSize = Enum.AutomaticSize.X,
+		AnchorPoint = Vector2.new(0, 0), Position = UDim2.new(0, 22, 0, 0),
+		Size = UDim2.new(1, -22, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
 	})
 
-	-- sub-elements (colorpicker/keybind) sit flush against the right edge so
-	-- they never overlap the label text regardless of its width.
+	-- sub-elements (colorpicker/keybind) sit at the top-right by the first line
 	local sub = Create("Frame", {
 		Parent = row, BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X,
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.new(0, 0, 1, 0),
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 0, 0, 15),
 	})
 	Create("UIListLayout", { Parent = sub, FillDirection = Enum.FillDirection.Horizontal,
 		HorizontalAlignment = Enum.HorizontalAlignment.Right,
@@ -1230,15 +1244,22 @@ function Components.Slider(data)
 
 	local container = Create("Frame", { Parent = data.Parent, BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 28), BorderSizePixel = 0 })
-	MakeText(container, data.Name or "Slider", { Size = UDim2.new(0, 0, 0, 15),
-		AutomaticSize = Enum.AutomaticSize.X })
-	-- editable value: click to type a number (clamped on commit)
-	local valueText = Create("TextBox", { Parent = container, FontFace = GetFont(), TextSize = 13,
-		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 0, 0, 15),
-		AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1, Text = "", ClearTextOnFocus = false,
-		TextColor3 = Color3.fromRGB(235, 235, 235), TextXAlignment = Enum.TextXAlignment.Right,
-		ThemeTag = { TextColor3 = "Text" } })
+	MakeText(container, data.Name or "Slider", { Size = UDim2.new(1, -54, 0, 15),
+		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+	-- editable value shown in a clear little input box (click to type a number)
+	local valueBox = Create("Frame", { Parent = container, AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, -1), Size = UDim2.new(0, 34, 0, 16), AutomaticSize = Enum.AutomaticSize.X,
+		BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(30, 36, 31), BackgroundTransparency = 0.35,
+		ThemeTag = { BackgroundColor3 = "Element" } })
+	Corner(valueBox, 3)
+	local vstroke = Stroke(valueBox, "Outline")
+	Create("UIPadding", { Parent = valueBox, PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) })
+	local valueText = Create("TextBox", { Parent = valueBox, FontFace = GetFont(), TextSize = 13,
+		Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1,
+		Text = "", ClearTextOnFocus = false, TextColor3 = Color3.fromRGB(235, 235, 235),
+		TextXAlignment = Enum.TextXAlignment.Center, ThemeTag = { TextColor3 = "Text" } })
 	TextStroke(valueText)
+	FocusHighlight(valueText, vstroke, maid)
 
 	local bar = Create("TextButton", { Parent = container, Text = "", AutoButtonColor = false,
 		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
@@ -1365,12 +1386,12 @@ function Components.Textbox(data)
 	local self = { Value = "", Flag = data.Flag }
 	local container = Create("Frame", { Parent = data.Parent, BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 40), BorderSizePixel = 0 })
-	MakeText(container, data.Name or "Textbox", { Size = UDim2.new(0, 0, 0, 15),
-		AutomaticSize = Enum.AutomaticSize.X })
-	local bg = ElementSkin(container, 20)
+	MakeText(container, data.Name or "Textbox", { Size = UDim2.new(1, 0, 0, 15),
+		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+	local bg, bgStroke = ElementSkin(container, 20)
 	bg.AnchorPoint = Vector2.new(0, 1)
 	bg.Position = UDim2.new(0, 0, 1, 0)
-	local input = Create("TextBox", { Parent = bg, FontFace = GetFont(), TextSize = 12,
+	local input = Create("TextBox", { Parent = bg, FontFace = GetFont(), TextSize = 13,
 		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ClearTextOnFocus = false,
 		Text = "", TextColor3 = Color3.fromRGB(235, 235, 235), TextXAlignment = Enum.TextXAlignment.Left,
 		PlaceholderColor3 = Color3.fromRGB(185, 185, 185), PlaceholderText = data.Placeholder or "...",
@@ -1378,6 +1399,7 @@ function Components.Textbox(data)
 		ThemeTag = { TextColor3 = "Text", PlaceholderColor3 = "Placeholder Text" } })
 	TextStroke(input)
 	Create("UIPadding", { Parent = input, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
+	FocusHighlight(input, bgStroke, maid)
 
 	function self:Get() return self.Value end
 	function self:SetVisibility(b) container.Visible = b end
@@ -1415,8 +1437,8 @@ function Components.Dropdown(data)
 
 	local container = Create("Frame", { Parent = data.Parent, BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 40), BorderSizePixel = 0 })
-	MakeText(container, data.Name or "Dropdown", { Size = UDim2.new(0, 0, 0, 15),
-		AutomaticSize = Enum.AutomaticSize.X })
+	MakeText(container, data.Name or "Dropdown", { Size = UDim2.new(1, 0, 0, 15),
+		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
 	local box = ElementSkin(container, 20)
 	box.AnchorPoint = Vector2.new(0, 1)
 	box.Position = UDim2.new(0, 0, 1, 0)
