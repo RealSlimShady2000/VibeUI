@@ -400,17 +400,19 @@ local Tween = {} do
 			local cache = ShownCache[inst]
 			for _, prop in props do
 				if visible then
-					-- prefer a live value set while hidden, else the snapshot, else current
-					local current = inst[prop]
-					local target = (current ~= 1 and current)
-						or (cache and cache[prop])
-						or current
+					-- always restore from the snapshot if we have one; never read the
+					-- current value (it may be mid-fade-out, which would lock in a
+					-- half-transparent target and blank the tab). Stateful elements
+					-- (e.g. toggle ticks) keep the snapshot current via Tween.SetShown.
+					local target = (cache and cache[prop] ~= nil) and cache[prop] or inst[prop]
 					inst[prop] = 1
 					last = TweenService:Create(inst, i, { [prop] = target })
 					last:Play()
 				else
 					if not cache then cache = {}; ShownCache[inst] = cache end
-					cache[prop] = inst[prop] -- snapshot live state before hiding
+					if cache[prop] == nil then
+						cache[prop] = inst[prop] -- snapshot the visible value once
+					end
 					last = TweenService:Create(inst, i, { [prop] = 1 })
 					last:Play()
 				end
@@ -623,6 +625,7 @@ local function MakeResizable(frame: GuiObject, minSize: Vector2, maid)
 			)
 		end
 	end))
+	return grip
 end
 
 --==============================================================================
@@ -1870,7 +1873,7 @@ function Library:Window(data: WindowConfig?)
 		ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
 	Stroke(root, "Outline")
 	Corner(root, 6)
-	if data.Resizable ~= false then MakeResizable(root, Vector2.new(520, 320), maid) end
+	local resizeGrip = (data.Resizable ~= false) and MakeResizable(root, Vector2.new(520, 320), maid) or nil
 
 	-- title bar: logo + title (left), window controls (right); also the drag handle
 	local titlebar = Create("Frame", { Parent = root, BackgroundTransparency = 1, BorderSizePixel = 0,
@@ -1951,14 +1954,15 @@ function Library:Window(data: WindowConfig?)
 		Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(10, 10), BackgroundTransparency = 1, BorderSizePixel = 0 })
 	Create("UIStroke", { Parent = maxSquare, Thickness = 1.5, ThemeTag = { Color = "Text" } })
 
-	local minimized, maximized, savedSize = false, false, size
+	local minimized, maximized, savedSize, savedPos = false, false, size, root.Position
 	function window:SetMinimized(b)
 		if b == minimized then return end
 		minimized = b
+		if resizeGrip then resizeGrip.Visible = not b end
 		if b then
 			savedSize = root.Size
 			body.Visible = false
-			Tween.To(root, { Size = UDim2.new(savedSize.X.Scale, savedSize.X.Offset, 0, TITLEBAR_H + 4) })
+			Tween.To(root, { Size = UDim2.new(savedSize.X.Scale, savedSize.X.Offset, 0, TITLEBAR_H) })
 		else
 			body.Visible = true
 			Tween.To(root, { Size = savedSize })
@@ -1967,12 +1971,13 @@ function Library:Window(data: WindowConfig?)
 	function window:SetMaximized(b)
 		if b == maximized then return end
 		maximized = b
+		if resizeGrip then resizeGrip.Visible = not b end
 		if b then
-			savedSize = root.Size
-			local vp = Holder.AbsoluteSize
-			Tween.To(root, { Size = UDim2.fromOffset(math.floor(vp.X * 0.92), math.floor(vp.Y * 0.92)) })
+			savedSize, savedPos = root.Size, root.Position
+			-- truly fill the screen (centered)
+			Tween.To(root, { Size = UDim2.fromScale(1, 1), Position = UDim2.fromScale(0.5, 0.5) })
 		else
-			Tween.To(root, { Size = savedSize })
+			Tween.To(root, { Size = savedSize, Position = savedPos })
 		end
 	end
 	maid:GiveTask(minBtn.MouseButton1Click:Connect(function() window:SetMinimized(not minimized) end))
@@ -2048,11 +2053,8 @@ function Library:Window(data: WindowConfig?)
 			tab.Sections.ColumnsData[i] = col
 		end
 
-		local switching = false
 		function tab:Turn(on)
-			if switching then return end
 			tab.Active = on
-			switching = true
 			page.Visible = on
 			page.Parent = on and content or UnusedHolder
 			-- respect global UI transparency: active base 0, inactive base 0.6
@@ -2064,8 +2066,7 @@ function Library:Window(data: WindowConfig?)
 				Tween.To(label, { Position = UDim2.new(0, on and 13 or 8, 0.5, 0) })
 			end
 			if on then window.CurrentTab = tab end
-			local last = Tween.Fade(page, on, window.FadeTime)
-			if last then last.Completed:Once(function() switching = false end) else switching = false end
+			Tween.Fade(page, on, window.FadeTime)
 		end
 
 		-- re-apply the correct (state-dependent) transparency when the global
