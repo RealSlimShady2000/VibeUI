@@ -507,7 +507,7 @@ local function MakeText(parent: Instance, text: string, props): TextLabel
 	props.Parent = parent
 	props.FontFace = props.FontFace or GetFont()
 	props.Text = text
-	props.TextSize = props.TextSize or 12
+	props.TextSize = props.TextSize or 13
 	props.BackgroundTransparency = 1
 	props.BorderSizePixel = 0
 	props.TextColor3 = props.TextColor3 or Theme.Values.Text
@@ -843,11 +843,12 @@ local Tooltip = {} do
 	})
 	Stroke(frame, "Outline")
 	Create("UIPadding", { Parent = frame,
-		PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
-		PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) })
+		PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
+		PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9) })
+	Corner(frame, 4)
 	local label = Create("TextLabel", {
 		Parent = frame, BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY,
-		FontFace = GetFont(), TextSize = 12, ZIndex = 5001,
+		FontFace = GetFont(), TextSize = 13, ZIndex = 5001,
 		Text = "", TextColor3 = Color3.fromRGB(235, 235, 235),
 		ThemeTag = { TextColor3 = "Text" },
 	})
@@ -988,15 +989,18 @@ local MARKER_TYPES = {
 	error   = { color = function() return Color3.fromRGB(245, 120, 120) end, glyph = "!" },
 }
 
--- A small circular i / ! marker that shows a tooltip on hover (tips, warnings…).
+-- A circular i / ! marker that shows a tooltip on hover (tips, warnings…).
 function Components.InfoMarker(parent, text: string, kind: string?, maid)
 	local data = MARKER_TYPES[kind or "info"] or MARKER_TYPES.info
 	local marker = Create("TextButton", { Parent = parent, Text = "", AutoButtonColor = false,
-		Size = UDim2.fromOffset(14, 14), BorderSizePixel = 0, BackgroundColor3 = data.color() })
+		Size = UDim2.fromOffset(16, 16), BorderSizePixel = 0, BackgroundColor3 = data.color() })
 	Create("UICorner", { Parent = marker, CornerRadius = UDim.new(1, 0) })
+	Create("UIStroke", { Parent = marker, Thickness = 1, Transparency = 0.4,
+		Color = Color3.fromRGB(0, 0, 0), ThemeTag = { Color = "Text Stroke" } })
 	if data.themed then Theme.Tag(marker, { BackgroundColor3 = "Accent" }) end
 	Create("TextLabel", { Parent = marker, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
-		FontFace = Font.fromEnum(Enum.Font.GothamBold), Text = data.glyph, TextSize = 10,
+		FontFace = Font.fromEnum(Enum.Font.GothamBold), Text = data.glyph, TextSize = 12,
+		TextYAlignment = Enum.TextYAlignment.Center, TextXAlignment = Enum.TextXAlignment.Center,
 		TextColor3 = Color3.fromRGB(14, 17, 15), ThemeTag = { TextColor3 = "Background" } })
 	if text and text ~= "" then Tooltip.Bind(marker, text, maid) end
 	return marker
