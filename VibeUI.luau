@@ -1309,16 +1309,18 @@ end
 function Components.Label(data)
 	local maid = data.Maid
 	local self = {}
+	-- container grows vertically as the (wrapping) text needs more lines
 	local container = Create("Frame", { Parent = data.Parent, BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 20), BorderSizePixel = 0 })
-	local text = MakeText(container, data.Name or "Label", { AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.new(1, 0, 0, 15),
-		TextXAlignment = Enum.TextXAlignment.Left, AutomaticSize = Enum.AutomaticSize.X })
+		Size = UDim2.new(1, 0, 0, 18), AutomaticSize = Enum.AutomaticSize.Y, BorderSizePixel = 0 })
+	-- wrap within the column so long text never clips off the edge
+	local text = MakeText(container, data.Name or "Label", { AnchorPoint = Vector2.new(0, 0),
+		Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top })
 
-	-- right-anchored so colorpicker/keybind sub-elements never overlap the text.
+	-- right-anchored (top) so colorpicker/keybind sub-elements sit by the first line.
 	local sub = Create("Frame", { Parent = container, BackgroundTransparency = 1,
-		AutomaticSize = Enum.AutomaticSize.X, AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.new(0, 0, 1, 0) })
+		AutomaticSize = Enum.AutomaticSize.X, AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 0, 0, 18) })
 	Create("UIListLayout", { Parent = sub, FillDirection = Enum.FillDirection.Horizontal,
 		HorizontalAlignment = Enum.HorizontalAlignment.Right,
 		VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6),
