@@ -348,15 +348,8 @@ local Tween = {} do
 
 	local ShownCache = setmetatable({}, { __mode = "k" })
 
-	local function shownValue(inst, prop)
-		local t = ShownCache[inst]
-		if not t then t = {}; ShownCache[inst] = t end
-		if t[prop] == nil then t[prop] = inst[prop] end
-		return t[prop]
-	end
-
 	--- Update the cached "visible" value so fades animate to the new target
-	--- (used by the global UI-transparency feature).
+	--- (used by the global UI-transparency feature and stateful elements).
 	function Tween.SetShown(inst: Instance, prop: string, value: number)
 		local t = ShownCache[inst]
 		if not t then t = {}; ShownCache[inst] = t end
@@ -389,6 +382,9 @@ local Tween = {} do
 	end
 
 	--- Fade every fade-able descendant of `root` in/out. Returns last tween.
+	--- On fade-OUT we snapshot each property's CURRENT value (so it reflects the
+	--- element's live state, e.g. a ticked checkbox); fade-IN animates back to
+	--- that snapshot. This fixes stateful elements blanking after a tab switch.
 	function Tween.Fade(root: Instance, visible: boolean, speed: number?): Tween?
 		local i = info(speed or Config.FadeSpeed)
 		local list = root:GetDescendants()
@@ -397,11 +393,23 @@ local Tween = {} do
 		for _, inst in list do
 			local props = Tween.PropsFor(inst)
 			if not props then continue end
+			local cache = ShownCache[inst]
 			for _, prop in props do
-				local shown = shownValue(inst, prop)
-				if visible then inst[prop] = 1 end
-				last = TweenService:Create(inst, i, { [prop] = visible and shown or 1 })
-				last:Play()
+				if visible then
+					-- prefer a live value set while hidden, else the snapshot, else current
+					local current = inst[prop]
+					local target = (current ~= 1 and current)
+						or (cache and cache[prop])
+						or current
+					inst[prop] = 1
+					last = TweenService:Create(inst, i, { [prop] = target })
+					last:Play()
+				else
+					if not cache then cache = {}; ShownCache[inst] = cache end
+					cache[prop] = inst[prop] -- snapshot live state before hiding
+					last = TweenService:Create(inst, i, { [prop] = 1 })
+					last:Play()
+				end
 			end
 		end
 		return last
@@ -943,6 +951,28 @@ local function ElementSkin(parent, height)
 	return btn
 end
 
+----------------------------------------------------------------- InfoMarker ---
+local MARKER_TYPES = {
+	info    = { color = function() return Theme.Values.Accent end,       glyph = "i", themed = true },
+	tip     = { color = function() return Theme.Values.Accent end,       glyph = "i", themed = true },
+	warning = { color = function() return Color3.fromRGB(245, 205, 110) end, glyph = "!" },
+	error   = { color = function() return Color3.fromRGB(245, 120, 120) end, glyph = "!" },
+}
+
+-- A small circular i / ! marker that shows a tooltip on hover (tips, warnings…).
+function Components.InfoMarker(parent, text: string, kind: string?, maid)
+	local data = MARKER_TYPES[kind or "info"] or MARKER_TYPES.info
+	local marker = Create("TextButton", { Parent = parent, Text = "", AutoButtonColor = false,
+		Size = UDim2.fromOffset(14, 14), BorderSizePixel = 0, BackgroundColor3 = data.color() })
+	Create("UICorner", { Parent = marker, CornerRadius = UDim.new(1, 0) })
+	if data.themed then Theme.Tag(marker, { BackgroundColor3 = "Accent" }) end
+	Create("TextLabel", { Parent = marker, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
+		FontFace = Font.fromEnum(Enum.Font.GothamBold), Text = data.glyph, TextSize = 10,
+		TextColor3 = Color3.fromRGB(14, 17, 15), ThemeTag = { TextColor3 = "Background" } })
+	if text and text ~= "" then Tooltip.Bind(marker, text, maid) end
+	return marker
+end
+
 --------------------------------------------------------------------- Toggle ---
 function Components.Toggle(data)
 	local maid = data.Maid
@@ -1003,6 +1033,9 @@ function Components.Toggle(data)
 			Tween.To(check, { ImageTransparency = 1, Size = UDim2.fromOffset(0, 0) },
 				Tween.Info(nil, Enum.EasingStyle.Back))
 		end
+		-- keep the fade snapshot in sync so a tab switch (which fades the page)
+		-- restores the tick state instead of a blank box
+		Tween.SetShown(check, "ImageTransparency", self.Value and 0 or 1)
 		if data.Callback then Library:SafeCall(data.Callback, self.Value) end
 	end
 
@@ -1950,6 +1983,10 @@ function Library:Window(data: WindowConfig?)
 					cc.Name = cc.Name or c.Name
 					return Components.Keybind(cc)
 				end
+				function t:AddInfo(text, kind)
+					return Components.InfoMarker(self._sub, text, kind, maid)
+				end
+				if c.Info then t:AddInfo(c.Info, c.InfoType) end
 				return t
 			end
 			function section:Button(c) return Components.Button(withParent(c)) end
@@ -1972,6 +2009,10 @@ function Library:Window(data: WindowConfig?)
 					cc.Name = cc.Name or c.Name
 					return Components.Keybind(cc)
 				end
+				function l:AddInfo(text, kind)
+					return Components.InfoMarker(self._sub, text, kind, maid)
+				end
+				if c.Info then l:AddInfo(c.Info, c.InfoType) end
 				return l
 			end
 
