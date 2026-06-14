@@ -34,6 +34,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService       = game:GetService("RunService")
 local TweenService     = game:GetService("TweenService")
 local HttpService      = game:GetService("HttpService")
+local GuiService       = game:GetService("GuiService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -505,11 +506,12 @@ local function Corner(parent: Instance, radius: number?)
 	Create("UICorner", { Parent = parent, CornerRadius = UDim.new(0, radius or 4) })
 end
 
--- The Holder ScreenGui uses IgnoreGuiInset = false, so AbsolutePosition shares
--- the same coordinate space as GetMouseLocation() (both full-screen) — no inset
--- adjustment needed. Verified live: GetMouseLocation == AbsolutePosition there.
+-- GetMouseLocation() is full-screen (includes the topbar inset), but our GUIs
+-- live under an IgnoreGuiInset=false ScreenGui whose AbsolutePosition is measured
+-- in the inset-excluded space. Subtract the inset so mouse↔AbsolutePosition math
+-- (colorpicker palette, sliders, hover hit-tests) lines up with the rendered UI.
 local function MousePos(): Vector2
-	return UserInputService:GetMouseLocation()
+	return UserInputService:GetMouseLocation() - GuiService:GetGuiInset()
 end
 
 local function isMouseOver(gui: Instance): boolean
@@ -1667,22 +1669,14 @@ function Components.Colorpicker(data)
 		if last then last.Completed:Once(done) else done() end
 	end
 
-	-- dragging the palette / hue / alpha. Use the InputObject's own Position (the
-	-- exact hit-tested point) so the marker lands under the pointer. Mouse-move
-	-- events during a drag also carry Position; MousePos() is the fallback.
+	-- dragging the palette / hue / alpha. MousePos() (inset-corrected) shares the
+	-- GUIs' AbsolutePosition space, so the marker lands under the pointer.
 	local function bindDrag(button, onMove)
 		local active = false
-		local function run(input)
-			if input and input.Position then
-				onMove(Vector2.new(input.Position.X, input.Position.Y))
-			else
-				onMove(MousePos())
-			end
-		end
 		maid:GiveTask(button.InputBegan:Connect(function(input)
 			if Input.isPrimary(input) then
 				active = true
-				run(input)
+				onMove(MousePos())
 				local conn
 				conn = input.Changed:Connect(function()
 					if input.UserInputState == Enum.UserInputState.End then active = false conn:Disconnect() end
@@ -1690,7 +1684,7 @@ function Components.Colorpicker(data)
 			end
 		end))
 		maid:GiveTask(Input.On("Changed", function(input)
-			if active and Input.isMove(input) then run(input) end
+			if active and Input.isMove(input) then onMove(MousePos()) end
 		end))
 	end
 
