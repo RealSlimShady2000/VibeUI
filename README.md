@@ -50,6 +50,9 @@ The menu toggles with **Right Ctrl** by default (configurable in Settings).
 | `VibeUI:Notification(...)` | Toast. See **Notifications** below. Returns a handle with `:Close()`. |
 | `VibeUI:SetNotificationSide(side)` | `"BottomRight"`/`"BottomLeft"`/`"TopRight"`/`"TopLeft"`. |
 | `VibeUI:SetTransparency(alpha)` | Make the whole UI see-through. `0` = opaque … `1` = invisible. Also a Settings slider. |
+| `VibeUI:Loader(opts)` | Loading screen. See **Overlays** below. |
+| `VibeUI:MessageBox(opts)` | Modal message box with buttons. See **Overlays**. |
+| `VibeUI:KeySystem(opts)` | Key gate with a `Validate` hook for auth/whitelisting. See **Overlays**. |
 | `VibeUI:CreateSettingsPage(window, watermark?, keybindList?)` | Adds a Theming/Configs/Interface tab. |
 | `VibeUI:GetConfig()` / `:LoadConfig(json)` | Serialize / apply all flags. |
 | `VibeUI:ListConfigs()` / `:SaveConfig(name)` / `:DeleteConfig(name)` / `:ReadConfig(name)` | Config files (no-ops without a filesystem). |
@@ -57,7 +60,13 @@ The menu toggles with **Right Ctrl** by default (configurable in Settings).
 | `VibeUI.Flags` | `flag -> value` table, live. |
 
 `WindowConfig`: `Title`, `Logo` (rbxassetid string, no prefix), `Size` (UDim2),
-`FadeTime`, `Resizable`, `Keybind`.
+`FadeTime`, `Resizable`, `Keybind`, `Layout` (`"Side"` default sidebar, or
+`"Top"` for a horizontal tab bar above full-width content).
+
+Every window has a **title bar** with **minimize** (collapses to the bar) and
+**maximize** (toggles ~92% of the viewport) buttons — also `window:SetMinimized(b)`
+/ `window:SetMaximized(b)`. The window is draggable by the title bar and by the
+empty area of the sidebar / top bar.
 
 ### Window → Tab → Section
 ```lua
@@ -68,13 +77,13 @@ local section = tab:Section({ Name = "Aimbot", Side = 1 }) -- Side = column inde
 ### Elements (all on `Section`)
 | Element | Signature | Returns / notes |
 | --- | --- | --- |
-| Toggle | `:Toggle({Name, Flag, Default, Tooltip, Callback})` | `:Set/:Get/:SetText/:SetVisibility`; `:AddColorpicker{}`, `:AddKeybind{}` |
+| Toggle | `:Toggle({Name, Flag, Default, Tooltip, Info, InfoType, Callback})` | `:Set/:Get/:SetText/:SetVisibility`; `:AddColorpicker{}`, `:AddKeybind{}`, `:AddInfo(text, kind)` |
 | Button | `:Button()` then `btn:Add(name, cb)` | multi-button row |
 | Slider | `:Slider({Name, Flag, Min, Max, Default, Decimals, Suffix, Callback})` | `:Set/:Get` |
 | Dropdown | `:Dropdown({Name, Flag, Items, Default, Multi, Search, Callback})` | `:Set/:Get/:Add/:Remove/:Refresh` |
 | Searchbox | `:Searchbox({...})` | Dropdown with `Search = true` |
 | Textbox | `:Textbox({Name, Flag, Default, Placeholder, Numeric, Finished, Callback})` | `:Set/:Get` |
-| Label | `:Label(name)` | `:SetText`; `:AddColorpicker{}`, `:AddKeybind{}` |
+| Label | `:Label(name)` | `:SetText`; `:AddColorpicker{}`, `:AddKeybind{}`, `:AddInfo(text, kind)` |
 | Paragraph | `:Paragraph({Name, Content})` | wrapping multi-line text |
 | Divider | `:Divider()` | horizontal separator |
 
@@ -109,6 +118,46 @@ local toast = VibeUI:Notification({
 toast:Close()  -- dismiss early
 
 VibeUI:SetNotificationSide("TopRight")  -- move the stack
+```
+
+## Info markers
+
+Add a small `i` / `!` marker with a hover tooltip for tips and warnings:
+
+```lua
+section:Toggle({ Name = "Risky feature", Info = "May get you banned", InfoType = "warning" })
+section:Label("Aim settings"):AddInfo("Higher = snappier", "tip")  -- kinds: info | tip | warning | error
+```
+
+## Overlays (loader / message box / key system)
+
+```lua
+-- Loading screen
+local load = VibeUI:Loader({ Title = "VibeUI", Status = "Connecting…", Logo = "77218680285262" })
+load:SetProgress(0.4); load:SetStatus("Fetching data…")
+load:Finish(0.4) -- fills to 100% then closes  (or load:Close())
+
+-- Message box
+VibeUI:MessageBox({
+    Title = "Unsaved changes",
+    Text  = "Save before closing?",
+    Confirm = function() print("save") end,   -- → "Confirm" button
+    Cancel  = function() print("discard") end, -- → "Cancel" button
+    -- or fully custom: Buttons = { {Text="Yes", Primary=true, Callback=fn}, {Text="No", Callback=fn} }
+})
+
+-- Key system (plug in any auth — HTTP whitelist, etc.)
+VibeUI:KeySystem({
+    Title = "VibeUI",
+    Note  = "Enter your key to continue.",
+    SaveKey = true,                              -- persists a valid key and auto-retries next launch
+    Links = { { Text = "Get Key", Url = "https://your.link/key" } }, -- copies URL to clipboard
+    Validate = function(key)                     -- return true to accept; runs your auth/whitelist
+        local ok = pcall(function() return game:HttpGet("https://api.you/validate?key=" .. key) end)
+        return key == "VIBE-123"                 -- example; do your real check here
+    end,
+    OnSuccess = function(key) print("unlocked", key) end,
+})
 ```
 
 ## Theming

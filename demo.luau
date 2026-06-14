@@ -16,6 +16,7 @@ local Window = VibeUI:Window({
 	Logo    = "77218680285262",
 	Size    = UDim2.fromOffset(720, 520),
 	Keybind = Enum.KeyCode.RightControl,
+	Layout  = "Side", -- try "Top" for a horizontal tab bar; minimize/maximize live in the title bar
 })
 
 local Watermark   = VibeUI:Watermark("VibeUI  •  " .. game:GetService("Players").LocalPlayer.Name)
@@ -26,7 +27,7 @@ local Combat = Window:Tab({ Name = "Combat", Columns = 2 })
 
 local Aimbot = Combat:Section({ Name = "Aimbot", Side = 1 })
 Aimbot:Toggle({
-	Name = "Enabled", Flag = "AimbotEnabled", Tooltip = "Master aimbot toggle",
+	Name = "Enabled", Flag = "AimbotEnabled", Info = "Master aimbot toggle", InfoType = "tip",
 	Callback = function(v) print("Aimbot:", v) end,
 }):AddKeybind({ Flag = "AimbotKey", Default = Enum.KeyCode.E, Mode = "Hold" })
 
@@ -39,6 +40,12 @@ Aimbot:Label("FOV Color"):AddColorpicker({
 local Misc = Combat:Section({ Name = "Misc", Side = 2 })
 Misc:Toggle({ Name = "Wall check", Flag = "WallCheck", Default = true })
 Misc:Toggle({ Name = "Team check", Flag = "TeamCheck", Default = true })
+Misc:Toggle({ Name = "Risky feature", Flag = "Risky", Info = "May get you banned", InfoType = "warning" })
+Misc:Button():Add("Message box", function()
+	VibeUI:MessageBox({ Title = "Confirm", Text = "Run this risky action?",
+		Confirm = function() VibeUI:Notification({ Title = "Done", Type = "success", Duration = 3 }) end,
+		Cancel = function() end })
+end)
 Misc:Dropdown({ Name = "Hitboxes", Flag = "Hitboxes", Multi = true,
 	Items = { "Head", "Torso", "Legs", "Arms" }, Default = { "Head", "Torso" } })
 Misc:Divider()
