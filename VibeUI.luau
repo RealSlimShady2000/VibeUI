@@ -1811,45 +1811,123 @@ function Library:Window(data: WindowConfig?)
 	}
 
 	local size = data.Size or UDim2.fromOffset(720, 520)
+	local layoutMode = (data.Layout == "Top" or data.Layout == "top") and "Top" or "Side"
+	window.Layout = layoutMode
+	local TITLEBAR_H = 30
+	local hasLogo = data.Logo and data.Logo ~= ""
 
-	local root = Create("Frame", { Parent = Holder, Visible = false,
+	local root = Create("Frame", { Parent = Holder, Visible = false, ClipsDescendants = true,
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = size,
 		BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2,
 		BackgroundColor3 = Color3.fromRGB(14, 17, 15),
 		ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
 	Stroke(root, "Outline")
 	Corner(root, 6)
-	MakeDraggable(root, root, maid)
-	if data.Resizable ~= false then MakeResizable(root, Vector2.new(560, 360), maid) end
+	if data.Resizable ~= false then MakeResizable(root, Vector2.new(520, 320), maid) end
 
-	-- side bar
-	local side = Create("Frame", { Parent = root, Position = UDim2.fromOffset(12, 12),
-		Size = UDim2.new(0, 190, 1, -24), BorderColor3 = Color3.fromRGB(42, 49, 45), BorderSizePixel = 2,
-		BackgroundColor3 = Color3.fromRGB(20, 24, 21), ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Outline" } })
-	Stroke(side, "Border")
-	Corner(side)
-
-	if data.Logo and data.Logo ~= "" then
-		Create("ImageLabel", { Parent = side, BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, 12), Size = UDim2.fromOffset(72, 72), ScaleType = Enum.ScaleType.Fit,
+	-- title bar: logo + title (left), window controls (right); also the drag handle
+	local titlebar = Create("Frame", { Parent = root, BackgroundTransparency = 1, BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, TITLEBAR_H) })
+	MakeDraggable(root, titlebar, maid)
+	if hasLogo then
+		Create("ImageLabel", { Parent = titlebar, BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 12, 0.5, 0), Size = UDim2.fromOffset(18, 18), ScaleType = Enum.ScaleType.Fit,
 			Image = "rbxassetid://" .. data.Logo, ImageColor3 = Color3.fromRGB(202, 243, 255),
 			ThemeTag = { ImageColor3 = "Accent" } })
 	end
-	MakeText(side, data.Title or "VibeUI", { AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, (data.Logo and data.Logo ~= "") and 90 or 14), Size = UDim2.new(1, -16, 0, 16),
-		TextXAlignment = Enum.TextXAlignment.Center, TextSize = 14 })
+	MakeText(titlebar, data.Title or "VibeUI", { AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, hasLogo and 38 or 12, 0.5, 0), Size = UDim2.new(0, 0, 0, 16),
+		AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Left, TextSize = 14 })
+	Create("Frame", { Parent = titlebar, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(202, 243, 255),
+		ThemeTag = { BackgroundColor3 = "Accent" } })
 
-	local tabHolder = Create("Frame", { Parent = side, BackgroundTransparency = 1,
-		Position = UDim2.new(0, 0, 0, (data.Logo and data.Logo ~= "") and 112 or 40),
-		Size = UDim2.new(1, 0, 1, -((data.Logo and data.Logo ~= "") and 124 or 52)) })
-	Create("UIPadding", { Parent = tabHolder, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
-	Create("UIListLayout", { Parent = tabHolder, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
+	local controls = Create("Frame", { Parent = titlebar, BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.new(0, 0, 1, 0),
+		AutomaticSize = Enum.AutomaticSize.X })
+	Create("UIListLayout", { Parent = controls, FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder })
 
-	-- content area
-	local content = Create("Frame", { Parent = root, BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(214, 12), Size = UDim2.new(1, -226, 1, -24) })
+	local function controlButton(order)
+		local b = Create("TextButton", { Parent = controls, Text = "", AutoButtonColor = false,
+			Size = UDim2.fromOffset(20, 20), LayoutOrder = order, BackgroundTransparency = 1,
+			BackgroundColor3 = Color3.fromRGB(37, 42, 45), ThemeTag = { BackgroundColor3 = "Hovered Element" } })
+		Corner(b, 3)
+		maid:GiveTask(b.MouseEnter:Connect(function() Tween.To(b, { BackgroundTransparency = 0.4 }) end))
+		maid:GiveTask(b.MouseLeave:Connect(function() Tween.To(b, { BackgroundTransparency = 1 }) end))
+		return b
+	end
+
+	-- body: everything below the title bar; collapses on minimize
+	local body = Create("Frame", { Parent = root, BackgroundTransparency = 1, BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, TITLEBAR_H), Size = UDim2.new(1, 0, 1, -TITLEBAR_H) })
+
+	local tabHolder, content
+	if layoutMode == "Side" then
+		local side = Create("Frame", { Parent = body, Position = UDim2.fromOffset(12, 6),
+			Size = UDim2.new(0, 178, 1, -18), BorderColor3 = Color3.fromRGB(42, 49, 45), BorderSizePixel = 2,
+			BackgroundColor3 = Color3.fromRGB(20, 24, 21), ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Outline" } })
+		Stroke(side, "Border")
+		Corner(side)
+		tabHolder = Create("Frame", { Parent = side, BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 1, -16) })
+		Create("UIPadding", { Parent = tabHolder, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
+		Create("UIListLayout", { Parent = tabHolder, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
+		content = Create("Frame", { Parent = body, BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(202, 6), Size = UDim2.new(1, -214, 1, -18) })
+	else -- Top: horizontal tab bar above the content
+		local topbar = Create("Frame", { Parent = body, Position = UDim2.fromOffset(12, 6),
+			Size = UDim2.new(1, -24, 0, 30), BorderColor3 = Color3.fromRGB(42, 49, 45), BorderSizePixel = 2,
+			BackgroundColor3 = Color3.fromRGB(20, 24, 21), ThemeTag = { BackgroundColor3 = "Inline", BorderColor3 = "Outline" } })
+		Stroke(topbar, "Border")
+		Corner(topbar)
+		tabHolder = Create("Frame", { Parent = topbar, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
+		Create("UIPadding", { Parent = tabHolder, PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5),
+			PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4) })
+		Create("UIListLayout", { Parent = tabHolder, FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
+		content = Create("Frame", { Parent = body, BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(12, 42), Size = UDim2.new(1, -24, 1, -54) })
+	end
 
 	if CursorBg then CursorBg.Visible = true end
+
+	-- window controls: minimize (collapse to title bar) + maximize (toggle large)
+	local minBtn = controlButton(1)
+	Create("Frame", { Parent = minBtn, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(10, 2), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(235, 235, 235),
+		ThemeTag = { BackgroundColor3 = "Text" } })
+	local maxBtn = controlButton(2)
+	local maxSquare = Create("Frame", { Parent = maxBtn, AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(10, 10), BackgroundTransparency = 1, BorderSizePixel = 0 })
+	Create("UIStroke", { Parent = maxSquare, Thickness = 1.5, ThemeTag = { Color = "Text" } })
+
+	local minimized, maximized, savedSize = false, false, size
+	function window:SetMinimized(b)
+		if b == minimized then return end
+		minimized = b
+		if b then
+			savedSize = root.Size
+			body.Visible = false
+			Tween.To(root, { Size = UDim2.new(savedSize.X.Scale, savedSize.X.Offset, 0, TITLEBAR_H + 4) })
+		else
+			body.Visible = true
+			Tween.To(root, { Size = savedSize })
+		end
+	end
+	function window:SetMaximized(b)
+		if b == maximized then return end
+		maximized = b
+		if b then
+			savedSize = root.Size
+			local vp = Holder.AbsoluteSize
+			Tween.To(root, { Size = UDim2.fromOffset(math.floor(vp.X * 0.92), math.floor(vp.Y * 0.92)) })
+		else
+			Tween.To(root, { Size = savedSize })
+		end
+	end
+	maid:GiveTask(minBtn.MouseButton1Click:Connect(function() window:SetMinimized(not minimized) end))
+	maid:GiveTask(maxBtn.MouseButton1Click:Connect(function() window:SetMaximized(not maximized) end))
 
 	function window:SetOpen(open)
 		self.IsOpen = open
@@ -1877,18 +1955,35 @@ function Library:Window(data: WindowConfig?)
 		tabData = tabData or {}
 		local tab = { Sections = { ColumnsData = {} }, Active = false, Columns = tabData.Columns or 2 }
 
-		local btn = Create("TextButton", { Parent = tabHolder, Text = "", AutoButtonColor = false,
-			Size = UDim2.new(1, 0, 0, 25), BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2,
-			BackgroundTransparency = 0.6, BackgroundColor3 = Color3.fromRGB(25, 30, 26),
-			ThemeTag = { BackgroundColor3 = "Page Background", BorderColor3 = "Border" } })
-		Stroke(btn, "Outline", 0.6)
-		Corner(btn)
-		local liner = Create("Frame", { Parent = btn, Size = UDim2.new(0, 1, 1, 0), BorderSizePixel = 0,
-			BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(202, 243, 255),
-			ThemeTag = { BackgroundColor3 = "Accent" } })
-		local label = MakeText(btn, tabData.Name or "Tab", { AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.new(0, 0, 0, 15),
-			TextXAlignment = Enum.TextXAlignment.Left, AutomaticSize = Enum.AutomaticSize.X })
+		local btn, liner, label
+		if layoutMode == "Side" then
+			btn = Create("TextButton", { Parent = tabHolder, Text = "", AutoButtonColor = false,
+				Size = UDim2.new(1, 0, 0, 25), BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2,
+				BackgroundTransparency = 0.6, BackgroundColor3 = Color3.fromRGB(25, 30, 26),
+				ThemeTag = { BackgroundColor3 = "Page Background", BorderColor3 = "Border" } })
+			Stroke(btn, "Outline", 0.6)
+			Corner(btn)
+			liner = Create("Frame", { Parent = btn, Size = UDim2.new(0, 1, 1, 0), BorderSizePixel = 0,
+				BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(202, 243, 255),
+				ThemeTag = { BackgroundColor3 = "Accent" } })
+			label = MakeText(btn, tabData.Name or "Tab", { AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.new(0, 0, 0, 15),
+				TextXAlignment = Enum.TextXAlignment.Left, AutomaticSize = Enum.AutomaticSize.X })
+		else -- Top: auto-width pill with a centered label and a bottom accent liner
+			btn = Create("TextButton", { Parent = tabHolder, Text = "", AutoButtonColor = false,
+				Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
+				BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 0,
+				BackgroundTransparency = 1, BackgroundColor3 = Color3.fromRGB(25, 30, 26),
+				ThemeTag = { BackgroundColor3 = "Page Background", BorderColor3 = "Border" } })
+			Corner(btn)
+			Create("UIPadding", { Parent = btn, PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) })
+			liner = Create("Frame", { Parent = btn, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, 0),
+				Size = UDim2.new(1, -6, 0, 2), BorderSizePixel = 0, BackgroundTransparency = 1,
+				BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
+			label = MakeText(btn, tabData.Name or "Tab", { AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 0, 0, 15),
+				TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.X })
+		end
 
 		local page = Create("Frame", { Parent = content, BackgroundTransparency = 1, Visible = false,
 			Size = UDim2.fromScale(1, 1) })
@@ -1916,7 +2011,9 @@ function Library:Window(data: WindowConfig?)
 			Tween.To(btn, { BackgroundTransparency = btnTarget })
 			Tween.SetShown(btn, "BackgroundTransparency", btnTarget)
 			Tween.To(liner, { BackgroundTransparency = on and 0 or 1 })
-			Tween.To(label, { Position = UDim2.new(0, on and 13 or 8, 0.5, 0) })
+			if layoutMode == "Side" then
+				Tween.To(label, { Position = UDim2.new(0, on and 13 or 8, 0.5, 0) })
+			end
 			if on then window.CurrentTab = tab end
 			local last = Tween.Fade(page, on, window.FadeTime)
 			if last then last.Completed:Once(function() switching = false end) else switching = false end
