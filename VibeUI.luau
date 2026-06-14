@@ -1808,6 +1808,8 @@ function Library:Window(data: WindowConfig?)
 			root.Visible = self.IsOpen
 			if CursorBg then CursorBg.Visible = self.IsOpen end
 			UserInputService.MouseIconEnabled = (not Config.CustomCursor) or (not self.IsOpen)
+			-- re-assert global transparency in case it was changed mid-fade
+			if self.IsOpen and Config.Transparency > 0 then ApplyTransparency(Config.Transparency) end
 		end
 		if last then last.Completed:Once(done) else done() end
 	end
