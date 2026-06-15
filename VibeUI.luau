@@ -770,6 +770,7 @@ ApplyNotificationSide(Config.NotificationSide)
 
 local Anchors = {} -- frame -> updater fn
 local OpenPopups = {} -- popup -> true (exclusive popups currently open)
+local hideTooltip: (() -> ())? = nil -- set by the Tooltip block; hides any visible tooltip
 
 local CursorBg
 if Config.CustomCursor then
@@ -835,6 +836,7 @@ local function CreatePopup(anchorTo: GuiObject, maid, exclusive: boolean?)
 		debounce = true
 
 		if open then
+			if hideTooltip then hideTooltip() end -- a tooltip would float over the list
 			if exclusive ~= false then
 				CloseAllPopups(self)
 				OpenPopups[self] = true
@@ -960,9 +962,34 @@ local Tooltip = {} do
 	end
 
 	local active = false
+	local currentGui: GuiObject? = nil
+
+	local function hide()
+		frame.Visible = false
+		active = false
+		currentGui = nil
+	end
+	hideTooltip = hide -- let popups hide the tooltip when they open
+
+	-- is the pointer still within the bound element's screen rect?
+	local function overGui(gui: GuiObject?): boolean
+		if not gui or not gui.Parent or not gui.Visible then return false end
+		local m = MousePos()
+		local p, s = gui.AbsolutePosition, gui.AbsoluteSize
+		return m.X >= p.X and m.X <= p.X + s.X and m.Y >= p.Y and m.Y <= p.Y + s.Y
+	end
+
 	-- follow the pointer only while a tooltip is shown and the mouse moves
 	LibMaid:GiveTask(Input.On("Changed", function(input)
-		if active and Input.isMove(input) then place() end
+		if not active or not Input.isMove(input) then return end
+		-- hide if a popup (dropdown/colorpicker/keybind list) is open — the tooltip
+		-- would otherwise float over it — or if the pointer left the bound element
+		-- (e.g. a popup opened on top, so MouseLeave never fired).
+		if next(OpenPopups) ~= nil or not overGui(currentGui) then
+			hide()
+		else
+			place()
+		end
 	end))
 
 	function Tooltip.Bind(gui: GuiObject, text: string, maid, kind: string?)
@@ -975,6 +1002,8 @@ local Tooltip = {} do
 		end
 		local plain = (k and ("[" .. k.t .. "] ") or "") .. text -- for measuring (no rich tags)
 		maid:GiveTask(gui.MouseEnter:Connect(function()
+			-- don't pop a tooltip while a popup is open: it would render over the list
+			if next(OpenPopups) ~= nil then return end
 			label.Text = display
 			local ok, b = pcall(function()
 				return game:GetService("TextService"):GetTextSize(plain, 13, Enum.Font.Gotham, Vector2.new(MAX_TT_W, 100000))
@@ -984,14 +1013,14 @@ local Tooltip = {} do
 			else
 				label.Size = UDim2.fromOffset(MAX_TT_W, 40)
 			end
+			currentGui = gui
 			frame.Visible = true
 			active = true
 			place()
 			task.defer(place)
 		end))
 		maid:GiveTask(gui.MouseLeave:Connect(function()
-			frame.Visible = false
-			active = false
+			if currentGui == gui then hide() end
 		end))
 	end
 end
