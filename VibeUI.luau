@@ -932,10 +932,13 @@ local Tooltip = {} do
 	Corner(frame, 4)
 	local label = Create("TextLabel", {
 		Parent = frame, BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY,
-		FontFace = GetFont(), TextSize = 13, ZIndex = 5001, RichText = true,
+		FontFace = GetFont(), TextSize = 13, ZIndex = 5001, RichText = true, TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
 		Text = "", TextColor3 = Color3.fromRGB(235, 235, 235),
 		ThemeTag = { TextColor3 = "Text" },
 	})
+	-- wrap long tooltips instead of running off the screen
+	Create("UISizeConstraint", { Parent = label, MaxSize = Vector2.new(260, math.huge) })
 
 	-- coloured [KIND] prefix for info markers
 	local TOOLTIP_KINDS = {
@@ -945,13 +948,20 @@ local Tooltip = {} do
 		error   = { c = Color3.fromRGB(245, 110, 110), t = "ERROR" },
 	}
 
+	-- place near the cursor but keep the whole tooltip on screen
+	local function place()
+		local m = MousePos()
+		local vp = Holder.AbsoluteSize
+		local fw, fh = frame.AbsoluteSize.X, frame.AbsoluteSize.Y
+		local px = math.clamp(m.X + 14, 4, math.max(4, vp.X - fw - 4))
+		local py = math.clamp(m.Y + 16, 4, math.max(4, vp.Y - fh - 4))
+		frame.Position = UDim2.fromOffset(px, py)
+	end
+
 	local active = false
 	-- follow the pointer only while a tooltip is shown and the mouse moves
 	LibMaid:GiveTask(Input.On("Changed", function(input)
-		if active and Input.isMove(input) then
-			local m = MousePos()
-			frame.Position = UDim2.fromOffset(m.X + 14, m.Y + 2)
-		end
+		if active and Input.isMove(input) then place() end
 	end))
 
 	function Tooltip.Bind(gui: GuiObject, text: string, maid, kind: string?)
@@ -964,10 +974,10 @@ local Tooltip = {} do
 		end
 		maid:GiveTask(gui.MouseEnter:Connect(function()
 			label.Text = display
-			local m = MousePos()
-			frame.Position = UDim2.fromOffset(m.X + 14, m.Y + 2) -- place immediately
 			frame.Visible = true
 			active = true
+			place() -- position (clamped on-screen) after size settles
+			task.defer(place)
 		end))
 		maid:GiveTask(gui.MouseLeave:Connect(function()
 			frame.Visible = false
