@@ -2612,6 +2612,72 @@ function Library:UserProfile(opts)
 	return profile
 end
 
+--- A scrolling news ticker / marquee. opts:
+---   Messages ({string}) or Text (string), Speed (px/s, default 70),
+---   Separator (between messages), Tag (left accent label e.g. "NEWS"),
+---   Side ("Top"/"Bottom", default Top) or Position+Size (UDim2) for custom placement,
+---   Height (default 26).
+--- Returns: :SetMessages/:SetText/:SetSpeed/:SetTag/:Pause/:Resume/:SetVisibility/:Destroy.
+function Library:Ticker(opts)
+	opts = opts or {}
+	local ticker = {}
+	local speed = opts.Speed or 70
+	local sep = opts.Separator or "      •      "
+	local messages = opts.Messages or { opts.Text or "VibeUI" }
+	local side = opts.Side or "Top"
+	local height = opts.Height or 26
+	local anchorY = (side == "Bottom") and 1 or 0
+
+	local bar = Create("Frame", { Parent = Holder, AnchorPoint = Vector2.new(0.5, anchorY),
+		Position = opts.Position or UDim2.new(0.5, 0, anchorY, 0),
+		Size = opts.Size or UDim2.new(1, 0, 0, height), ClipsDescendants = true, BorderSizePixel = 2,
+		BackgroundColor3 = Color3.fromRGB(14, 17, 15), ThemeTag = { BackgroundColor3 = "Background", BorderColor3 = "Border" } })
+	Stroke(bar, "Outline")
+	trackScale(bar)
+	-- accent edge line (bottom for a top ticker, top for a bottom ticker)
+	Create("Frame", { Parent = bar, AnchorPoint = Vector2.new(0, anchorY == 0 and 1 or 0),
+		Position = UDim2.new(0, 0, anchorY == 0 and 1 or 0, 0), Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0,
+		BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
+
+	local tagW = 0
+	local tagLabel
+	if opts.Tag then
+		tagW = 58
+		local tag = Create("Frame", { Parent = bar, Size = UDim2.new(0, tagW, 1, 0), BorderSizePixel = 0,
+			BackgroundColor3 = Color3.fromRGB(202, 243, 255), ZIndex = 2, ThemeTag = { BackgroundColor3 = "Accent" } })
+		tagLabel = MakeText(tag, opts.Tag, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center,
+			FontFace = Font.fromEnum(Enum.Font.GothamBold), TextColor3 = Color3.fromRGB(14, 17, 15),
+			ThemeTag = { TextColor3 = "Background" } })
+	end
+
+	local scrollArea = Create("Frame", { Parent = bar, BackgroundTransparency = 1, ClipsDescendants = true,
+		Position = UDim2.fromOffset(tagW + 8, 0), Size = UDim2.new(1, -(tagW + 16), 1, 0) })
+	local label = MakeText(scrollArea, table.concat(messages, sep), { AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.new(0, 0, 0, 15), AutomaticSize = Enum.AutomaticSize.X,
+		TextXAlignment = Enum.TextXAlignment.Left })
+
+	local paused, x = false, nil
+	LibMaid:GiveTask(RunService.RenderStepped:Connect(function(dt)
+		if paused or not bar.Visible then return end
+		local areaW = scrollArea.AbsoluteSize.X
+		local w = label.AbsoluteSize.X
+		if x == nil then x = areaW end
+		x = x - speed * dt
+		if x <= -w then x = areaW end -- wrap back to the right once fully scrolled off
+		label.Position = UDim2.new(0, math.floor(x), 0.5, 0)
+	end))
+
+	function ticker:SetMessages(t) messages = t; label.Text = table.concat(t, sep); x = scrollArea.AbsoluteSize.X end
+	function ticker:SetText(t) ticker:SetMessages({ t }) end
+	function ticker:SetSpeed(n) speed = n end
+	function ticker:SetTag(t) if tagLabel then tagLabel.Text = t end end
+	function ticker:Pause() paused = true end
+	function ticker:Resume() paused = false end
+	function ticker:SetVisibility(b) bar.Visible = b end
+	function ticker:Destroy() bar:Destroy() end
+	return ticker
+end
+
 local NOTIF_TYPES = {
 	info    = { color = function() return Theme.Values.Accent end,   glyph = "i" },
 	success = { color = function() return Color3.fromRGB(120, 230, 150) end, glyph = "✓" },

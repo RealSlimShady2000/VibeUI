@@ -24,6 +24,16 @@ local Watermark   = VibeUI:Watermark("VibeUI  •  " .. game:GetService("Players
 local KeybindList = VibeUI:KeybindList()
 -- Discord-style profile card (auto-fills from the local player; all fields optional)
 local Profile     = VibeUI:UserProfile({ Status = "Vibing" })
+-- scrolling news ticker across the top of the screen
+local Ticker      = VibeUI:Ticker({
+	Tag = "NEWS", Side = "Top", Speed = 80,
+	Messages = {
+		"Welcome to VibeUI!",
+		"Now with a news ticker, scrollable dropdowns & a Discord-style profile.",
+		"Drag the floating button on mobile to open the menu.",
+		"github.com/RealSlimShady2000/VibeUI",
+	},
+})
 
 --========================================================================= Combat
 local Combat = Window:Tab({ Name = "Combat", Columns = 2 })
