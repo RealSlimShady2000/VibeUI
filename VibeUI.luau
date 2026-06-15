@@ -2827,6 +2827,19 @@ function Library:SetScale(n: number)
 	ApplyScale(n)
 end
 
+--- Apply a full theme (partial tables are fine; only the given keys change).
+--- Call this BEFORE :CreateSettingsPage so the color pickers reflect your style.
+--- Keys: Background, Border, Inline, Element, "Hovered Element", "Page Background",
+--- Outline, Gradient, Text, "Text Stroke", "Placeholder Text", Accent.
+function Library:SetTheme(theme: Theme)
+	Theme.Load(theme)
+end
+
+--- Register a named preset so it appears in the Settings → Theme presets dropdown.
+function Library:AddTheme(name: string, theme: Theme)
+	Presets[name] = theme
+end
+
 --- Toggle element border outlines on/off (a flatter look when off).
 function Library:SetOutlines(on: boolean)
 	Config.Outlines = on
@@ -3044,7 +3057,9 @@ function Library:CreateSettingsPage(window, watermark, keybindList)
 	local themeSection = tab:Section({ Name = "Theme presets", Side = 1 })
 	local presetNames = {}
 	for name in Presets do table.insert(presetNames, name) end
-	themeSection:Dropdown({ Name = "Preset", Flag = "ThemePreset", Items = presetNames, Default = "Midnight",
+	-- NOTE: no Default here on purpose — defaulting would call Theme.Load on
+	-- creation and clobber any custom theme the user set before this page.
+	themeSection:Dropdown({ Name = "Preset", Flag = "ThemePreset", Items = presetNames,
 		Callback = function(name)
 			if Presets[name] then Theme.Load(Presets[name]) end
 		end })

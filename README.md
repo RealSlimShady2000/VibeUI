@@ -183,13 +183,26 @@ colorpicker read the touch event's own position, so they track your finger.
 
 `VibeUI:CreateSettingsPage` adds a **Theming** section: a preset dropdown
 (`Midnight`, `Crimson`, `Indigo`) plus a colorpicker per theme key. Changes
-apply live across the whole UI. Programmatically:
+apply live across the whole UI.
+
+**Use your own style** — apply a (partial) theme, and optionally register it as a
+preset. Call these **before** `CreateSettingsPage` so the color pickers reflect it:
 
 ```lua
+VibeUI:SetTheme({
+    Accent     = Color3.fromRGB(255, 120, 0),
+    Background = Color3.fromRGB(18, 14, 10),
+    -- only the keys you pass change; the rest stay as-is
+})
+VibeUI:AddTheme("Sunset", { Accent = Color3.fromRGB(255,120,0), Background = Color3.fromRGB(18,14,10), --[[ ... ]] })
+
 -- theme keys: Background, Border, Inline, Element, "Hovered Element",
 -- "Page Background", Outline, Gradient, Text, "Text Stroke",
 -- "Placeholder Text", Accent
 ```
+
+> The preset dropdown no longer defaults to Midnight — it won't overwrite a
+> custom theme you've applied. Pick a preset only to switch.
 
 ## Config save/load
 
