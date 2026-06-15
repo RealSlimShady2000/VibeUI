@@ -930,15 +930,16 @@ local Tooltip = {} do
 		PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
 		PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9) })
 	Corner(frame, 4)
+	-- size is set explicitly per-tooltip (measured, capped at MAX_TT_W) so long
+	-- text wraps instead of running off-screen; AutomaticSize.X ignores constraints.
+	local MAX_TT_W = 260
 	local label = Create("TextLabel", {
-		Parent = frame, BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY,
+		Parent = frame, BackgroundTransparency = 1,
 		FontFace = GetFont(), TextSize = 13, ZIndex = 5001, RichText = true, TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Text = "", TextColor3 = Color3.fromRGB(235, 235, 235),
 		ThemeTag = { TextColor3 = "Text" },
 	})
-	-- wrap long tooltips instead of running off the screen
-	Create("UISizeConstraint", { Parent = label, MaxSize = Vector2.new(260, math.huge) })
 
 	-- coloured [KIND] prefix for info markers
 	local TOOLTIP_KINDS = {
@@ -972,11 +973,20 @@ local Tooltip = {} do
 			display = ("<b><font color=\"rgb(%d,%d,%d)\">[%s]</font></b> %s")
 				:format(math.floor(c.R * 255), math.floor(c.G * 255), math.floor(c.B * 255), k.t, text)
 		end
+		local plain = (k and ("[" .. k.t .. "] ") or "") .. text -- for measuring (no rich tags)
 		maid:GiveTask(gui.MouseEnter:Connect(function()
 			label.Text = display
+			local ok, b = pcall(function()
+				return game:GetService("TextService"):GetTextSize(plain, 13, Enum.Font.Gotham, Vector2.new(MAX_TT_W, 100000))
+			end)
+			if ok and b then
+				label.Size = UDim2.fromOffset(math.ceil(b.X) + 4, math.ceil(b.Y))
+			else
+				label.Size = UDim2.fromOffset(MAX_TT_W, 40)
+			end
 			frame.Visible = true
 			active = true
-			place() -- position (clamped on-screen) after size settles
+			place()
 			task.defer(place)
 		end))
 		maid:GiveTask(gui.MouseLeave:Connect(function()
