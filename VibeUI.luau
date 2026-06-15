@@ -1454,19 +1454,31 @@ function Components.Dropdown(data)
 	local popup = CreatePopup(box, maid)
 	Create("UIPadding", { Parent = popup.Frame, PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
 		PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4) })
-	Create("UIListLayout", { Parent = popup.Frame, Padding = UDim.new(0, 2),
+	Create("UIListLayout", { Parent = popup.Frame, Padding = UDim.new(0, 4),
 		SortOrder = Enum.SortOrder.LayoutOrder })
 
 	local searchInput
 	if data.Search then
 		local searchBg = Create("Frame", { Parent = popup.Frame, BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 16), LayoutOrder = -1, BorderSizePixel = 0 })
-		searchInput = Create("TextBox", { Parent = searchBg, FontFace = GetFont(), TextSize = 12,
+			Size = UDim2.new(1, 0, 0, 16), LayoutOrder = 0, BorderSizePixel = 0 })
+		searchInput = Create("TextBox", { Parent = searchBg, FontFace = GetFont(), TextSize = 13,
 			Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Text = "", ClearTextOnFocus = false,
 			TextColor3 = Color3.fromRGB(235, 235, 235), TextXAlignment = Enum.TextXAlignment.Left,
 			PlaceholderText = "search..", PlaceholderColor3 = Color3.fromRGB(185, 185, 185), BorderSizePixel = 0,
 			ThemeTag = { TextColor3 = "Text", PlaceholderColor3 = "Placeholder Text" } })
 	end
+
+	-- options live in a scrolling list: grows to fit, but caps at MaxHeight and
+	-- scrolls for very long dropdowns (compact rows so more fit on screen)
+	local MAX_LIST_H = data.MaxHeight or 200
+	local list = Create("ScrollingFrame", { Parent = popup.Frame, BackgroundTransparency = 1, BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(), ScrollBarThickness = 4, ScrollingDirection = Enum.ScrollingDirection.Y,
+		ScrollBarImageColor3 = Color3.fromRGB(202, 243, 255), LayoutOrder = 1, ZIndex = 51,
+		ThemeTag = { ScrollBarImageColor3 = "Accent" } })
+	Create("UISizeConstraint", { Parent = list, MaxSize = Vector2.new(math.huge, MAX_LIST_H) })
+	Create("UIListLayout", { Parent = list, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder })
+	Create("UIPadding", { Parent = list, PaddingRight = UDim.new(0, 4) }) -- room for the scrollbar
 
 	local function refreshText()
 		if data.Multi then
@@ -1530,7 +1542,7 @@ function Components.Dropdown(data)
 	end
 
 	function self:Add(name: string)
-		local btn = Create("TextButton", { Parent = popup.Frame, FontFace = GetFont(), TextSize = 12,
+		local btn = Create("TextButton", { Parent = list, FontFace = GetFont(), TextSize = 13,
 			Text = name, AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0,
 			TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 20), ZIndex = 51,
 			TextColor3 = Color3.fromRGB(235, 235, 235), BackgroundColor3 = Color3.fromRGB(37, 42, 45),
