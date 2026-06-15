@@ -1207,8 +1207,12 @@ function Components.Button(data)
 
 	function self:Add(name: string, callback)
 		local btn = ElementSkin(row, 20)
-		local label = MakeText(btn, name, { Size = UDim2.fromScale(1, 1),
-			TextXAlignment = Enum.TextXAlignment.Center })
+		btn.ClipsDescendants = true
+		-- truncate long labels within the button instead of spilling into neighbours
+		local label = MakeText(btn, name, { Size = UDim2.new(1, -8, 1, 0), Position = UDim2.fromScale(0.5, 0.5),
+			AnchorPoint = Vector2.new(0.5, 0.5), TextXAlignment = Enum.TextXAlignment.Center,
+			TextTruncate = Enum.TextTruncate.AtEnd })
+		if #name > 14 then Tooltip.Bind(btn, name, maid) end -- full text on hover when likely truncated
 		local sub = { Button = btn, Label = label }
 		function sub:Press()
 			Theme.Retag(btn, { BackgroundColor3 = "Accent" })
