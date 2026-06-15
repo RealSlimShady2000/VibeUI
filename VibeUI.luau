@@ -1110,14 +1110,17 @@ function Components.Toggle(data)
 	local maid = data.Maid
 	local self = { Value = false, Flag = data.Flag }
 
-	-- row grows vertically when the name wraps (responsive at any width)
+	-- flex row: checkbox + name (fills + wraps) + sub-elements (natural width),
+	-- grows vertically and never overlaps at any width
 	local row = Create("TextButton", {
 		Parent = data.Parent, Text = "", AutoButtonColor = false,
 		Size = UDim2.new(1, 0, 0, 15), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, BorderSizePixel = 0,
 	})
+	Create("UIListLayout", { Parent = row, FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Top, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
 
 	local box = Create("Frame", {
-		Parent = row, AnchorPoint = Vector2.new(0, 0), Position = UDim2.new(0, 0, 0, 0),
+		Parent = row, LayoutOrder = 0,
 		Size = UDim2.fromOffset(14, 14), BorderColor3 = Color3.fromRGB(12, 12, 12), BorderSizePixel = 2,
 		BackgroundColor3 = Color3.fromRGB(30, 36, 31),
 		ThemeTag = { BackgroundColor3 = "Element", BorderColor3 = "Border" },
@@ -1131,17 +1134,17 @@ function Components.Toggle(data)
 		ImageColor3 = Color3.fromRGB(0, 0, 0),
 	})
 
-	-- name wraps within the available width instead of clipping off the edge
+	-- name fills remaining width and wraps in it
 	local text = MakeText(row, data.Name or "Toggle", {
-		AnchorPoint = Vector2.new(0, 0), Position = UDim2.new(0, 22, 0, 0),
-		Size = UDim2.new(1, -22, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true,
+		LayoutOrder = 1, Size = UDim2.new(0, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
 	})
+	Create("UIFlexItem", { Parent = text, FlexMode = Enum.UIFlexMode.Fill })
 
-	-- sub-elements (colorpicker/keybind) sit at the top-right by the first line
+	-- sub-elements (colorpicker/keybind) take natural width to the right of the name
 	local sub = Create("Frame", {
 		Parent = row, BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.X,
-		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 0, 0, 15),
+		LayoutOrder = 2, Size = UDim2.new(0, 0, 0, 15),
 	})
 	Create("UIListLayout", { Parent = sub, FillDirection = Enum.FillDirection.Horizontal,
 		HorizontalAlignment = Enum.HorizontalAlignment.Right,
@@ -1334,18 +1337,22 @@ end
 function Components.Label(data)
 	local maid = data.Maid
 	local self = {}
-	-- container grows vertically as the (wrapping) text needs more lines
+	-- flex row: the text fills the remaining width (and wraps in it) while the
+	-- sub-element (colorpicker/keybind/etc.) takes its natural width — so the two
+	-- never overlap no matter how narrow the column gets.
 	local container = Create("Frame", { Parent = data.Parent, BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 18), AutomaticSize = Enum.AutomaticSize.Y, BorderSizePixel = 0 })
-	-- wrap within the column so long text never clips off the edge
-	local text = MakeText(container, data.Name or "Label", { AnchorPoint = Vector2.new(0, 0),
-		Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-		TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top })
+	Create("UIListLayout", { Parent = container, FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Top, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder })
 
-	-- right-anchored (top) so colorpicker/keybind sub-elements sit by the first line.
-	local sub = Create("Frame", { Parent = container, BackgroundTransparency = 1,
-		AutomaticSize = Enum.AutomaticSize.X, AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 0, 0, 18) })
+	local text = MakeText(container, data.Name or "Label", { LayoutOrder = 0,
+		Size = UDim2.new(0, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top })
+	Create("UIFlexItem", { Parent = text, FlexMode = Enum.UIFlexMode.Fill }) -- text fills leftover width
+
+	-- sub-element column (natural width); sits to the right of the text
+	local sub = Create("Frame", { Parent = container, BackgroundTransparency = 1, LayoutOrder = 1,
+		AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 0, 18) })
 	Create("UIListLayout", { Parent = sub, FillDirection = Enum.FillDirection.Horizontal,
 		HorizontalAlignment = Enum.HorizontalAlignment.Right,
 		VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6),
