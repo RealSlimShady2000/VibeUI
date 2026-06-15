@@ -1472,13 +1472,16 @@ function Components.Dropdown(data)
 	-- scrolls for very long dropdowns (compact rows so more fit on screen)
 	local MAX_LIST_H = data.MaxHeight or 200
 	local list = Create("ScrollingFrame", { Parent = popup.Frame, BackgroundTransparency = 1, BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(), ScrollBarThickness = 4, ScrollingDirection = Enum.ScrollingDirection.Y,
 		ScrollBarImageColor3 = Color3.fromRGB(202, 243, 255), LayoutOrder = 1, ZIndex = 51,
 		ThemeTag = { ScrollBarImageColor3 = "Accent" } })
-	Create("UISizeConstraint", { Parent = list, MaxSize = Vector2.new(math.huge, MAX_LIST_H) })
-	Create("UIListLayout", { Parent = list, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder })
+	local listLayout = Create("UIListLayout", { Parent = list, Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder })
 	Create("UIPadding", { Parent = list, PaddingRight = UDim.new(0, 4) }) -- room for the scrollbar
+	-- height = content, capped at MAX_LIST_H (scrolls beyond that)
+	maid:GiveTask(listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		list.Size = UDim2.new(1, 0, 0, math.min(listLayout.AbsoluteContentSize.Y, MAX_LIST_H))
+	end))
 
 	local function refreshText()
 		if data.Multi then
