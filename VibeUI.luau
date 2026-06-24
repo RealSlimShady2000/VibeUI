@@ -2334,6 +2334,11 @@ function Library:Window(data: WindowConfig?)
 				Tween.SetShown(bd.btn, "BackgroundTransparency", btnTarget)
 				Tween.To(bd.liner, { BackgroundTransparency = on and 0 or 1 })
 				if bd.side then
+					-- explicitly own the fill colour so a deselected tab never stays
+					-- stuck on the green hover colour (it used to only clear on re-hover)
+					local bg = on and "Hovered Element" or "Page Background"
+					Theme.Retag(bd.btn, { BackgroundColor3 = bg })
+					Tween.To(bd.btn, { BackgroundColor3 = Theme.Values[bg] })
 					Tween.To(bd.label, { Position = UDim2.new(0, on and 13 or 8, 0.5, 0) })
 				else
 					-- top tab: vibrant accent label when active
