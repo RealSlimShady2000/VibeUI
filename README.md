@@ -156,18 +156,29 @@ VibeUI:MessageBox({
     -- or fully custom: Buttons = { {Text="Yes", Primary=true, Callback=fn}, {Text="No", Callback=fn} }
 })
 
--- Key system (plug in any auth — HTTP whitelist, etc.)
-VibeUI:KeySystem({
-    Title = "VibeUI",
-    Note  = "Enter your key to continue.",
-    SaveKey = true,                              -- persists a valid key and auto-retries next launch
-    Links = { { Text = "Get Key", Url = "https://your.link/key" } }, -- copies URL to clipboard
-    Validate = function(key)                     -- return true to accept; runs your auth/whitelist
+-- Key system — a modern card with title, brand + badge, progress bar and
+-- stacked "get key" buttons. Plug in any auth (HTTP whitelist, etc.).
+local key = VibeUI:KeySystem({
+    Title      = "VIBEZ HUB",                    -- accent, bold; wraps if long (never clips)
+    Brand      = "robloxscripts.com",            -- small line under the title
+    Badge      = "FREE",                         -- accent pill next to the brand
+    Logo       = "77218680285262",               -- optional rbxassetid (no prefix)
+    Note       = "Paste your key, or grab one below.",
+    Placeholder= "Paste your key here",
+    UnlockText = "UNLOCK HUB",                    -- primary button label
+    Footer     = "secured by you  -  Right Ctrl to toggle once loaded",
+    SaveKey    = true,                           -- persists a valid key, auto-retries next launch
+    Links = {                                    -- stacked full-width buttons; each copies its Url
+        { Text = "Get a Key (do checkpoints)", Url = "https://your.link/key" },
+        { Text = "Join the Discord",           Url = "https://discord.gg/you" },
+    },
+    Validate = function(key)                     -- return true[, message] to accept/reject
         local ok = pcall(function() return game:HttpGet("https://api.you/validate?key=" .. key) end)
         return key == "VIBE-123"                 -- example; do your real check here
     end,
     OnSuccess = function(key) print("unlocked", key) end,
 })
+-- handle: key:SetProgress(0..1)  key:SetStatus(text)  key:Close()
 ```
 
 ## Mobile support
