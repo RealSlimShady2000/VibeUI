@@ -3026,42 +3026,123 @@ function Library:MessageBox(opts)
 	return { Close = close }
 end
 
---- A key system gate. opts:
----   Title, Note, Placeholder, SaveKey(bool), Links = { {Text=, Url=} },
----   Validate = function(key) -> boolean[, message]   (do HTTP auth / whitelist here)
----   OnSuccess = function(key), OnFail = function()
---- Returns a handle; if SaveKey and a stored key validates, it succeeds instantly.
+--- A modern key-system gate. opts:
+---   Title          window/hub name (accent, bold)
+---   Brand          small line under the title (e.g. "yoursite.com")
+---   Badge          accent pill next to the brand (e.g. "FREE")
+---   Logo           rbxassetid (no prefix) shown above the title
+---   Note           instruction line (wraps, never clips)
+---   Placeholder    key-box placeholder
+---   UnlockText     primary button text (default "Unlock")
+---   Footer         small print under the buttons (wraps)
+---   SaveKey        bool — remember a valid key on disk
+---   Links          { {Text=, Url=} } — stacked "Get Key" buttons (copy the url)
+---   Progress       false to hide the checkpoint progress bar
+---   Validate       function(key) -> boolean[, message]   (HTTP auth / whitelist)
+---   OnSuccess      function(key)        OnFail = function()
+--- Returns a handle: :Close() :SetProgress(0..1) :SetStatus(text) :SetNote(text).
+--- If SaveKey and a stored key validates, it succeeds instantly.
 function Library:KeySystem(opts)
 	opts = opts or {}
-	local _, panel, close = buildModal(opts.Width or 360, {})
+	local _, panel, close, maid = buildModal(opts.Width or 380, {})
 	local keyFile = Folders.Root .. "/key.txt"
+	local DARK = Color3.fromRGB(14, 17, 15)
 
-	MakeText(panel, opts.Title or "Key System", { Size = UDim2.new(1, 0, 0, 18), LayoutOrder = 0,
-		FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 16, TextXAlignment = Enum.TextXAlignment.Center })
-	MakeText(panel, opts.Note or "Enter your key to continue.", { Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, TextWrapped = true, TextSize = 13,
-		TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.fromRGB(185, 185, 185),
-		ThemeTag = { TextColor3 = "Placeholder Text" } })
+	-- subtle hover that lerps a button's fill toward a target colour
+	local function bindHover(btn, base, hovered)
+		maid:GiveTask(btn.MouseEnter:Connect(function() Tween.To(btn, { BackgroundColor3 = hovered }) end))
+		maid:GiveTask(btn.MouseLeave:Connect(function() Tween.To(btn, { BackgroundColor3 = base }) end))
+	end
 
-	local box = ElementSkin(panel, 26)
-	box.LayoutOrder = 2
-	local input = Create("TextBox", { Parent = box, FontFace = GetFont(), TextSize = 13, Size = UDim2.fromScale(1, 1),
+	-- optional logo
+	if opts.Logo and opts.Logo ~= "" then
+		Create("ImageLabel", { Parent = panel, BackgroundTransparency = 1, LayoutOrder = 1,
+			Size = UDim2.fromOffset(54, 54), ScaleType = Enum.ScaleType.Fit,
+			Image = "rbxassetid://" .. opts.Logo, ImageColor3 = Color3.fromRGB(202, 243, 255),
+			ThemeTag = { ImageColor3 = "Accent" } })
+	end
+
+	-- title (accent, wraps so a long hub name never clips)
+	MakeText(panel, opts.Title or "Key System", { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center,
+		FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 22,
+		TextColor3 = Theme.Values.Accent, ThemeTag = { TextColor3 = "Accent" } })
+
+	-- brand line + optional accent pill badge (rendered, so no broken glyphs)
+	if (opts.Brand and opts.Brand ~= "") or opts.Badge then
+		local brandRow = Create("Frame", { Parent = panel, BackgroundTransparency = 1, LayoutOrder = 3,
+			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+		Create("UIListLayout", { Parent = brandRow, FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 7), SortOrder = Enum.SortOrder.LayoutOrder })
+		if opts.Brand and opts.Brand ~= "" then
+			MakeText(brandRow, opts.Brand, { LayoutOrder = 1, Size = UDim2.new(0, 0, 0, 16),
+				AutomaticSize = Enum.AutomaticSize.X, TextSize = 13, TextTruncate = Enum.TextTruncate.AtEnd,
+				TextColor3 = Color3.fromRGB(170, 175, 170), ThemeTag = { TextColor3 = "Placeholder Text" } })
+		end
+		if opts.Badge and opts.Badge ~= "" then
+			local pill = Create("Frame", { Parent = brandRow, LayoutOrder = 2, Size = UDim2.new(0, 0, 0, 17),
+				AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = Theme.Values.Accent,
+				BackgroundTransparency = 0.8, BorderSizePixel = 0, ThemeTag = { BackgroundColor3 = "Accent" } })
+			Corner(pill, 5)
+			Create("UIPadding", { Parent = pill, PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 7) })
+			MakeText(pill, opts.Badge, { Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
+				FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 11,
+				TextColor3 = Theme.Values.Accent, ThemeTag = { TextColor3 = "Accent" } })
+		end
+	end
+
+	-- instruction / live status line (wraps, auto-height → never clips)
+	local note = MakeText(panel, opts.Note or "Paste your key below, or grab one via the buttons.",
+		{ LayoutOrder = 4, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true,
+		TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.fromRGB(195, 198, 195),
+		ThemeTag = { TextColor3 = "Text" } })
+
+	-- checkpoint progress bar (optional)
+	local progressFill
+	if opts.Progress ~= false then
+		local track = Create("Frame", { Parent = panel, LayoutOrder = 5, Size = UDim2.new(1, 0, 0, 6),
+			BackgroundColor3 = Theme.Values.Element, BackgroundTransparency = 0.25, BorderSizePixel = 0,
+			ThemeTag = { BackgroundColor3 = "Element" } })
+		Corner(track, 3)
+		progressFill = Create("Frame", { Parent = track, Size = UDim2.new(0, 0, 1, 0), BorderSizePixel = 0,
+			BackgroundColor3 = Theme.Values.Accent, ThemeTag = { BackgroundColor3 = "Accent" } })
+		Corner(progressFill, 3)
+	end
+	local function setProgress(a)
+		if progressFill then Tween.To(progressFill, { Size = UDim2.new(math.clamp(a, 0, 1), 0, 1, 0) },
+			Tween.Info(nil, Enum.EasingStyle.Quart)) end
+	end
+
+	-- key input (taller, clear placeholder, accent focus glow)
+	local box, boxStroke = ElementSkin(panel, 40)
+	box.LayoutOrder = 6
+	box.AutoButtonColor = false
+	box.ClipsDescendants = true
+	local input = Create("TextBox", { Parent = box, FontFace = GetFont(), TextSize = 14, Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1, Text = "", ClearTextOnFocus = false, TextColor3 = Color3.fromRGB(235, 235, 235),
-		PlaceholderText = opts.Placeholder or "Paste key…", PlaceholderColor3 = Color3.fromRGB(185, 185, 185),
+		TextXAlignment = Enum.TextXAlignment.Center, ClipsDescendants = true,
+		PlaceholderText = opts.Placeholder or "Paste your key here", PlaceholderColor3 = Color3.fromRGB(150, 153, 150),
 		BorderSizePixel = 0, ThemeTag = { TextColor3 = "Text", PlaceholderColor3 = "Placeholder Text" } })
-	Create("UIPadding", { Parent = input, PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
+	Create("UIPadding", { Parent = input, PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12) })
+	FocusHighlight(input, boxStroke, maid)
 
 	local handle = {}
 	local function validate(key)
 		key = (key or ""):gsub("^%s+", ""):gsub("%s+$", "")
-		if key == "" then return end
+		if key == "" then
+			note.Text = "Enter a key first — paste it into the box above."
+			return
+		end
 		local ok, result, msg = pcall(opts.Validate or function() return false end, key)
 		if ok and result then
 			if opts.SaveKey and HasFileSystem then pcall(writefile, keyFile, key) end
-			Library:Notification({ Title = "Key System", Description = "Key accepted.", Type = "success", Duration = 4 })
+			setProgress(1)
+			Library:Notification({ Title = "Key System", Description = "Key accepted — welcome!", Type = "success", Duration = 4 })
 			close()
 			if opts.OnSuccess then Library:SafeCall(opts.OnSuccess, key) end
 		else
+			note.Text = msg or "That key is invalid or expired. Try again."
 			Library:Notification({ Title = "Key System", Description = msg or "Invalid key.", Type = "error", Duration = 5 })
 			-- shake the panel
 			local p = panel.Position
@@ -3071,27 +3152,47 @@ function Library:KeySystem(opts)
 		end
 	end
 
-	local actions = Create("Frame", { Parent = panel, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24),
-		LayoutOrder = 3 })
-	Create("UIListLayout", { Parent = actions, FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalFlex = Enum.UIFlexAlignment.Fill, Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder })
-
-	for i, link in (opts.Links or {}) do
-		local lb = ElementSkin(actions, 24); lb.LayoutOrder = i
-		MakeText(lb, link.Text or "Get Key", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
-		lb.MouseButton1Click:Connect(function()
-			if setclipboard then pcall(setclipboard, link.Url) end
-			Library:Notification({ Title = "Key System", Description = "Link copied to clipboard.", Type = "info", Duration = 4 })
-		end)
-	end
-	local checkBtn = ElementSkin(actions, 24); checkBtn.LayoutOrder = 100
-	Theme.Retag(checkBtn, { BackgroundColor3 = "Accent" }); checkBtn.BackgroundColor3 = Theme.Values.Accent
-	MakeText(checkBtn, "Check", { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center,
-		TextColor3 = Color3.fromRGB(14, 17, 15), ThemeTag = { TextColor3 = "Background" } })
-	checkBtn.MouseButton1Click:Connect(function() validate(input.Text) end)
+	-- primary "Unlock" button (full width, accent, hover)
+	local unlock = Create("TextButton", { Parent = panel, Text = "", AutoButtonColor = false, LayoutOrder = 7,
+		Size = UDim2.new(1, 0, 0, 42), BorderSizePixel = 0, BackgroundColor3 = Theme.Values.Accent,
+		ThemeTag = { BackgroundColor3 = "Accent" } })
+	Corner(unlock, 6)
+	MakeText(unlock, opts.UnlockText or "Unlock", { Size = UDim2.fromScale(1, 1), TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Center, FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 15,
+		TextColor3 = DARK, ThemeTag = { TextColor3 = "Background" } })
+	bindHover(unlock, Theme.Values.Accent, Theme.Values.Accent:Lerp(Color3.new(1, 1, 1), 0.14))
+	maid:GiveTask(unlock.MouseButton1Click:Connect(function() validate(input.Text) end))
 	input.FocusLost:Connect(function(enter) if enter then validate(input.Text) end end)
 
+	-- secondary "Get Key" buttons, stacked full-width (no horizontal clipping)
+	for i, link in (opts.Links or {}) do
+		local lb = ElementSkin(panel, 36)
+		lb.LayoutOrder = 7 + i
+		lb.AutoButtonColor = false
+		MakeText(lb, link.Text or "Get a Key", { Size = UDim2.fromScale(1, 1), TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Center, FontFace = Font.fromEnum(Enum.Font.GothamMedium), TextSize = 14,
+			TextColor3 = Theme.Values.Accent, ThemeTag = { TextColor3 = "Accent" } })
+		bindHover(lb, Theme.Values.Element, Theme.Values["Hovered Element"])
+		maid:GiveTask(lb.MouseButton1Click:Connect(function()
+			if link.Url and setclipboard then pcall(setclipboard, link.Url) end
+			note.Text = "Key link copied — open it in your browser, finish the checkpoints, then paste your key here."
+			setProgress(0.5)
+			Library:Notification({ Title = "Key System", Description = "Link copied to clipboard.", Type = "info", Duration = 4 })
+		end))
+	end
+
+	-- footer small print (wraps, auto-height → never clips)
+	if opts.Footer and opts.Footer ~= "" then
+		MakeText(panel, opts.Footer, { LayoutOrder = 100, Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true, TextSize = 12,
+			TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Color3.fromRGB(135, 138, 135),
+			ThemeTag = { TextColor3 = "Placeholder Text" } })
+	end
+
 	function handle:Close() close() end
+	function handle:SetProgress(a) setProgress(a) end
+	function handle:SetStatus(t) note.Text = tostring(t) end
+	function handle:SetNote(t) note.Text = tostring(t) end
 
 	-- try a previously-saved key
 	if opts.SaveKey and HasFileSystem and isfile(keyFile) then
