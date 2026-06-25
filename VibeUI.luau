@@ -298,8 +298,15 @@ end
 --==============================================================================
 
 local Theme = {} do
-	Theme.Values   = Library.Theme
-	Theme.Registry = {}
+	Theme.Values = Library.Theme
+
+	-- Registry indexed for fast lookups instead of one flat array scanned linearly:
+	--   byInst[inst][prop] = entry   → O(props) Retag / Untag (called on every hover)
+	--   byKey[key][entry]  = true    → O(matches) Set for a single colour (live recolor)
+	--   funcEntries[entry] = true    → function refs, re-resolved on any Set
+	-- entry = { inst=, prop=, ref= }
+	local byInst, byKey, funcEntries = {}, {}, {}
+	Theme.Registry = byInst -- exposed for debugging
 
 	for k, v in Presets["Midnight"] do
 		Theme.Values[k] = v
@@ -312,46 +319,86 @@ local Theme = {} do
 		return Theme.Values[ref]
 	end
 
-	--- Register an instance property to follow a theme key (string) or function.
+	local function attach(entry)
+		if type(entry.ref) == "function" then
+			funcEntries[entry] = true
+		else
+			local s = byKey[entry.ref]
+			if not s then s = {}; byKey[entry.ref] = s end
+			s[entry] = true
+		end
+	end
+	local function detach(entry)
+		if type(entry.ref) == "function" then
+			funcEntries[entry] = nil
+		else
+			local s = byKey[entry.ref]
+			if s then s[entry] = nil end
+		end
+	end
+	local function dropEntry(entry) -- fully forget one (inst,prop)
+		detach(entry)
+		local bi = byInst[entry.inst]
+		if bi then
+			bi[entry.prop] = nil
+			if next(bi) == nil then byInst[entry.inst] = nil end
+		end
+	end
+
+	--- Register instance properties to follow a theme key (string) or function.
 	function Theme.Tag(inst: Instance, map)
+		local bi = byInst[inst]
+		if not bi then bi = {}; byInst[inst] = bi end
 		for prop, ref in map do
-			table.insert(Theme.Registry, { inst = inst, prop = prop, ref = ref })
+			local entry = bi[prop]
+			if entry then detach(entry) else entry = { inst = inst, prop = prop }; bi[prop] = entry end
+			entry.ref = ref
+			attach(entry)
 			pcall(function() inst[prop] = Theme.Resolve(ref) end)
 		end
 	end
 
-	--- Re-point an already-themed instance/property to a new key WITHOUT setting
-	--- the value — callers animate the change with Tween.To, and a later
-	--- Theme.Set on the new key will keep tracking it.
+	--- Re-point an already-themed property to a new key WITHOUT setting the value
+	--- — callers animate the change with Tween.To, and a later Theme.Set on the
+	--- new key keeps tracking it.
 	function Theme.Retag(inst: Instance, map)
+		local bi = byInst[inst]
+		if not bi then return end
 		for prop, ref in map do
-			for _, entry in Theme.Registry do
-				if entry.inst == inst and entry.prop == prop then
-					entry.ref = ref
-				end
-			end
+			local entry = bi[prop]
+			if entry then detach(entry); entry.ref = ref; attach(entry) end
 		end
+	end
+
+	--- Forget every entry for an instance (called when it is destroyed).
+	function Theme.Untag(inst: Instance)
+		local bi = byInst[inst]
+		if not bi then return end
+		for _, entry in bi do detach(entry) end
+		byInst[inst] = nil
+	end
+
+	local function apply(entry)
+		local ok = pcall(function() entry.inst[entry.prop] = Theme.Resolve(entry.ref) end)
+		if not ok then dropEntry(entry) end -- prune destroyed instances
 	end
 
 	--- Change a theme color live across the whole UI.
 	function Theme.Set(key: string, color: Color3)
 		Theme.Values[key] = color
-		for i = #Theme.Registry, 1, -1 do
-			local entry = Theme.Registry[i]
-			local ref = entry.ref
-			if ref == key or type(ref) == "function" then
-				local ok = pcall(function() entry.inst[entry.prop] = Theme.Resolve(ref) end)
-				if not ok then
-					table.remove(Theme.Registry, i) -- prune destroyed instances
-				end
-			end
-		end
+		local s = byKey[key]
+		if s then for entry in s do apply(entry) end end
+		for entry in funcEntries do apply(entry) end -- functions may depend on this key
 	end
 
+	--- Apply a whole theme in one pass (cheaper than Set per key).
 	function Theme.Load(t: Theme)
-		for k, v in t do
-			Theme.Set(k, v)
+		for k, v in t do Theme.Values[k] = v end
+		for k in t do
+			local s = byKey[k]
+			if s then for entry in s do apply(entry) end end
 		end
+		for entry in funcEntries do apply(entry) end
 	end
 end
 
@@ -447,8 +494,17 @@ end
 -- Instance factory + small UI helpers
 --==============================================================================
 
--- Opaque background surfaces tracked for the global UI-transparency feature.
-local Surfaces: { { inst: Instance, base: number } } = {}
+-- Tracked surfaces/strokes, keyed by instance so removal is O(1) and a destroyed
+-- element prunes itself (via Destroying) instead of lingering until a lazy sweep.
+local Surfaces: { [Instance]: number } = {}            -- inst -> opaque base transparency
+local BorderStrokes: { [Instance]: { base: number, parent: Instance, border: number } } = {}
+
+-- Drop a destroyed instance from every registry it might be in.
+local function untrack(inst: Instance)
+	Surfaces[inst] = nil
+	BorderStrokes[inst] = nil
+	Theme.Untag(inst)
+end
 
 --- Create an instance. `props.ThemeTag = {Prop = "Key"|fn}` auto-registers theme.
 local function Create(class: string, props, children: { Instance }?): any
@@ -460,12 +516,14 @@ local function Create(class: string, props, children: { Instance }?): any
 	for k, v in props do
 		inst[k] = v
 	end
+	local tracked = false
 	-- track opaque surfaces so they can be made see-through globally
 	-- (GuiObjects all have BackgroundTransparency; avoids a pcall per instance)
 	if inst:IsA("GuiObject") then
 		local bt = inst.BackgroundTransparency
 		if bt < 1 then
-			table.insert(Surfaces, { inst = inst, base = bt })
+			Surfaces[inst] = bt
+			tracked = true
 			if Config.Transparency and Config.Transparency > 0 then
 				inst.BackgroundTransparency = bt + (1 - bt) * Config.Transparency
 			end
@@ -473,6 +531,12 @@ local function Create(class: string, props, children: { Instance }?): any
 	end
 	if themeTag then
 		Theme.Tag(inst, themeTag)
+		tracked = true
+	end
+	-- auto-prune from the registries when destroyed (covers themed strokes too,
+	-- which Stroke() adds to BorderStrokes after this returns)
+	if tracked then
+		inst.Destroying:Once(function() untrack(inst) end)
 	end
 	if children then
 		for _, c in children do
@@ -487,9 +551,6 @@ end
 
 local GetFont -- forward-declared; resolves the loaded custom font or a fallback
 
--- Border outlines (from Stroke()) tracked so they can be toggled off as a theme option.
-local BorderStrokes: { { inst: Instance, base: number } } = {}
-
 local function Stroke(parent: Instance, key: string?, transparency: number?): Instance
 	local s = Create("UIStroke", {
 		Parent = parent,
@@ -500,7 +561,7 @@ local function Stroke(parent: Instance, key: string?, transparency: number?): In
 		ThemeTag = { Color = key or "Outline" },
 	})
 	local border = parent:IsA("GuiObject") and parent.BorderSizePixel or 0
-	table.insert(BorderStrokes, { inst = s, base = transparency or 0, parent = parent, border = border })
+	BorderStrokes[s] = { base = transparency or 0, parent = parent, border = border }
 	if not Config.Outlines then
 		s.Transparency = 1
 		if parent:IsA("GuiObject") then parent.BorderSizePixel = 0 end
@@ -606,14 +667,13 @@ local TransparencyRefreshers: { () -> () } = {}
 --- Lerps every tracked opaque surface and keeps fade animations in sync.
 local function ApplyTransparency(alpha: number)
 	Config.Transparency = math.clamp(alpha, 0, 1)
-	for i = #Surfaces, 1, -1 do
-		local entry = Surfaces[i]
+	for inst, base in Surfaces do
 		local ok = pcall(function()
-			local v = SurfaceAlpha(entry.base)
-			entry.inst.BackgroundTransparency = v
-			Tween.SetShown(entry.inst, "BackgroundTransparency", v)
+			local v = SurfaceAlpha(base)
+			inst.BackgroundTransparency = v
+			Tween.SetShown(inst, "BackgroundTransparency", v)
 		end)
-		if not ok then table.remove(Surfaces, i) end -- prune destroyed instances
+		if not ok then Surfaces[inst] = nil end -- prune destroyed instances
 	end
 	for i = #TransparencyRefreshers, 1, -1 do
 		if not pcall(TransparencyRefreshers[i]) then
@@ -786,6 +846,7 @@ ApplyNotificationSide(Config.NotificationSide)
 
 local Anchors = {} -- frame -> updater fn
 local OpenPopups = {} -- popup -> true (exclusive popups currently open)
+local OpenPopupList = {} -- popup -> anchor; ALL open popups, for one shared outside-click handler
 local hideTooltip: (() -> ())? = nil -- set by the Tooltip block; hides any visible tooltip
 
 local CursorBg
@@ -827,6 +888,17 @@ local function CloseAllPopups(except)
 	end
 end
 
+-- One shared outside-click handler for every popup (replaces a per-popup Began
+-- listener that fired — and spawned — for all of them on every click).
+LibMaid:GiveTask(Input.On("Began", function(input)
+	if not Input.isPrimary(input) or next(OpenPopupList) == nil then return end
+	for popup, anchor in OpenPopupList do
+		if popup.IsOpen and not isMouseOver(popup.Frame) and not isMouseOver(anchor) then
+			popup:SetOpen(false)
+		end
+	end
+end))
+
 --- Generic popup attached under an anchor element. Handles fade, follow, outside-click.
 local function CreatePopup(anchorTo: GuiObject, maid, exclusive: boolean?)
 	local frame = Create("Frame", {
@@ -859,6 +931,7 @@ local function CreatePopup(anchorTo: GuiObject, maid, exclusive: boolean?)
 			end
 			frame.Visible = true
 			frame.Parent = Holder
+			OpenPopupList[self] = anchorTo
 			Anchors[frame] = function()
 				local ap, as = anchorTo.AbsolutePosition, anchorTo.AbsoluteSize
 				frame.Position = UDim2.fromOffset(ap.X, ap.Y + as.Y + 6)
@@ -866,6 +939,7 @@ local function CreatePopup(anchorTo: GuiObject, maid, exclusive: boolean?)
 			end
 		else
 			OpenPopups[self] = nil
+			OpenPopupList[self] = nil
 			Anchors[frame] = nil
 		end
 
@@ -878,11 +952,8 @@ local function CreatePopup(anchorTo: GuiObject, maid, exclusive: boolean?)
 		if last then last.Completed:Once(done) else done() end
 	end
 
-	maid:GiveTask(Input.On("Began", function(input)
-		if not popup.IsOpen or not Input.isPrimary(input) then return end
-		if isMouseOver(frame) or isMouseOver(anchorTo) then return end
-		popup:SetOpen(false)
-	end))
+	-- ensure a still-open popup is forgotten if its owner is cleaned up
+	maid:GiveTask(function() OpenPopups[popup] = nil; OpenPopupList[popup] = nil end)
 
 	return popup
 end
@@ -2325,8 +2396,10 @@ function Library:Window(data: WindowConfig?)
 
 		local buttons = { makeSideTabBtn(tabData.Name or "Tab"), makeTopTabBtn(tabData.Name or "Tab") }
 
-		local page = Create("Frame", { Parent = content, BackgroundTransparency = 1, Visible = false,
-			Size = UDim2.fromScale(1, 1) })
+		-- CanvasGroup so the whole page fades as a single layer (GroupTransparency)
+		-- instead of one tween per descendant property on every tab switch.
+		local page = Create("CanvasGroup", { Parent = content, BackgroundTransparency = 1, Visible = false,
+			GroupTransparency = 0, Size = UDim2.fromScale(1, 1) })
 		Create("UIListLayout", { Parent = page, FillDirection = Enum.FillDirection.Horizontal,
 			HorizontalFlex = Enum.UIFlexAlignment.Fill, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder })
 		for i = 1, tab.Columns do
@@ -2341,8 +2414,6 @@ function Library:Window(data: WindowConfig?)
 
 		function tab:Turn(on)
 			tab.Active = on
-			page.Visible = on
-			page.Parent = on and content or UnusedHolder
 			-- respect global UI transparency: active base 0, inactive base 0.6
 			local btnTarget = SurfaceAlpha(on and 0 or 0.6)
 			for _, bd in buttons do
@@ -2362,8 +2433,20 @@ function Library:Window(data: WindowConfig?)
 					Tween.To(bd.label, { TextColor3 = on and Theme.Values.Accent or Theme.Values.Text })
 				end
 			end
-			if on then window.CurrentTab = tab end
-			Tween.Fade(page, on, window.FadeTime)
+			-- fade the page as one layer; element transparencies are left intact so
+			-- stateful widgets (e.g. ticked toggles) never blank after a switch.
+			if on then
+				window.CurrentTab = tab
+				page.Parent = content
+				page.Visible = true
+				page.GroupTransparency = 1
+				Tween.To(page, { GroupTransparency = 0 }, Tween.Info(window.FadeTime))
+			else
+				local t = Tween.To(page, { GroupTransparency = 1 }, Tween.Info(window.FadeTime))
+				t.Completed:Once(function()
+					if not tab.Active then page.Visible = false; page.Parent = UnusedHolder end
+				end)
+			end
 		end
 
 		-- re-apply state-dependent transparency when the global UI transparency changes
@@ -2692,7 +2775,7 @@ function Library:Ticker(opts)
 	opts = opts or {}
 	local ticker = {}
 	local speed = opts.Speed or 70
-	local sep = opts.Separator or "      •      "
+	local sep = opts.Separator or "      |      " -- ASCII-safe default (pass Separator to use • etc.)
 	local messages = opts.Messages or { opts.Text or "VibeUI" }
 	local side = opts.Side or "Top"
 	local height = opts.Height or 26
@@ -2915,15 +2998,14 @@ end
 --- Toggle element border outlines on/off (a flatter look when off).
 function Library:SetOutlines(on: boolean)
 	Config.Outlines = on
-	for i = #BorderStrokes, 1, -1 do
-		local e = BorderStrokes[i]
+	for s, e in BorderStrokes do
 		local ok = pcall(function()
-			e.inst.Transparency = on and e.base or 1
+			s.Transparency = on and e.base or 1
 			if e.parent and e.parent:IsA("GuiObject") then
 				e.parent.BorderSizePixel = on and e.border or 0
 			end
 		end)
-		if not ok then table.remove(BorderStrokes, i) end
+		if not ok then BorderStrokes[s] = nil end -- prune destroyed instances
 	end
 end
 
