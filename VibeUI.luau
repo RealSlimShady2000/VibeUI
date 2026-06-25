@@ -138,6 +138,7 @@ local Config = {
 	Transparency = 0, -- 0 = opaque, 1 = fully see-through
 	Scale        = 1, -- global UI scale
 	MobileToggle = true, -- show a floating open/close button on touch devices
+	GlowIntensity = 0.5, -- neon glow on accent bars (sliders, progress): 0 = off, 1 = max
 }
 
 local Folders = {
@@ -582,6 +583,43 @@ end
 local function Corner(parent: Instance, radius: number?)
 	if not Config.Rounded then return end
 	Create("UICorner", { Parent = parent, CornerRadius = UDim.new(0, radius or 4) })
+end
+
+-- Neon glow for accent bars (slider fills, progress bars). A soft 9-slice glow
+-- image, tinted to the accent, stretched over the bar. Intensity (Config.Glow-
+-- Intensity, 0..1) drives its transparency and is adjustable live from Settings.
+local GLOW_IMAGE = "rbxassetid://5028857084"
+local GLOW_SLICE = Rect.new(24, 24, 232, 232)
+local Glows: { [Instance]: boolean } = {} -- glow image -> true (for live intensity)
+local function glowTransparency(): number
+	return 1 - math.clamp(Config.GlowIntensity or 0, 0, 1) * 0.85
+end
+--- Add a glow that tracks `bar` (a child of it, slightly larger for the bloom).
+local function addGlow(bar: GuiObject): Instance
+	local glow = Create("ImageLabel", {
+		Parent = bar,
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, 20, 1, 16), -- spill past the bar so the bloom shows
+		Image = GLOW_IMAGE,
+		ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = GLOW_SLICE,
+		ImageColor3 = Color3.fromRGB(202, 243, 255),
+		ImageTransparency = glowTransparency(),
+		ZIndex = (bar.ZIndex or 1) + 1,
+		ThemeTag = { ImageColor3 = "Accent" },
+	})
+	Glows[glow] = true
+	glow.Destroying:Once(function() Glows[glow] = nil end)
+	return glow
+end
+local function ApplyGlowIntensity(n: number)
+	Config.GlowIntensity = math.clamp(n, 0, 1)
+	local t = glowTransparency()
+	for glow in Glows do
+		if not pcall(function() glow.ImageTransparency = t end) then Glows[glow] = nil end
+	end
 end
 
 -- GetMouseLocation() is full-screen (includes the topbar inset), but our GUIs
@@ -1412,6 +1450,7 @@ function Components.Slider(data)
 	Corner(bar)
 	local fill = Create("Frame", { Parent = bar, Size = UDim2.fromScale(0.5, 1), BorderSizePixel = 0,
 		BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
+	addGlow(fill) -- neon glow that tracks the fill width
 
 	function self:Get() return self.Value end
 	function self:SetVisibility(b) container.Visible = b end
@@ -2994,6 +3033,41 @@ function Library:AddTheme(name: string, theme: Theme)
 	Presets[name] = theme
 end
 
+--- Set the neon glow intensity on accent bars (sliders/progress). 0 = off, 1 = max.
+function Library:SetGlow(intensity: number)
+	ApplyGlowIntensity(intensity)
+end
+
+--- Serialize the current theme to a JSON string ({ key = "#rrggbb", ... }).
+function Library:ExportTheme(): string
+	local out = {}
+	for key, color in Theme.Values do
+		if typeof(color) == "Color3" then out[key] = "#" .. color:ToHex() end
+	end
+	return HttpService:JSONEncode(out)
+end
+
+--- Apply a theme from a JSON string (as produced by ExportTheme, or hand-written
+--- with "#rrggbb" / {r,g,b} values). Returns (ok, errorMessage?).
+function Library:ImportTheme(json: string): (boolean, string?)
+	local ok, decoded = pcall(HttpService.JSONDecode, HttpService, json)
+	if not ok or type(decoded) ~= "table" then return false, "invalid JSON" end
+	local theme = {}
+	for key, value in decoded do
+		local color
+		if type(value) == "string" then
+			local okc, c = pcall(Color3.fromHex, (value:gsub("#", "")))
+			if okc then color = c end
+		elseif type(value) == "table" and value[1] then
+			color = Color3.fromRGB(value[1], value[2], value[3])
+		end
+		if color then theme[key] = color end
+	end
+	if next(theme) == nil then return false, "no valid colours found" end
+	Theme.Load(theme)
+	return true
+end
+
 --- Toggle element border outlines on/off (a flatter look when off).
 function Library:SetOutlines(on: boolean)
 	Config.Outlines = on
@@ -3070,6 +3144,7 @@ function Library:Loader(opts)
 	local fill = Create("Frame", { Parent = track, Size = UDim2.new(0, 0, 1, 0), BorderSizePixel = 0,
 		BackgroundColor3 = Color3.fromRGB(202, 243, 255), ThemeTag = { BackgroundColor3 = "Accent" } })
 	Corner(fill, 3)
+	addGlow(fill)
 
 	local handle = {}
 	function handle:SetProgress(a) Tween.To(fill, { Size = UDim2.new(math.clamp(a, 0, 1), 0, 1, 0) },
@@ -3213,6 +3288,7 @@ function Library:KeySystem(opts)
 		progressFill = Create("Frame", { Parent = track, Size = UDim2.new(0, 0, 1, 0), BorderSizePixel = 0,
 			BackgroundColor3 = Theme.Values.Accent, ThemeTag = { BackgroundColor3 = "Accent" } })
 		Corner(progressFill, 3)
+		addGlow(progressFill)
 	end
 	local function setProgress(a)
 		if progressFill then Tween.To(progressFill, { Size = UDim2.new(math.clamp(a, 0, 1), 0, 1, 0) },
@@ -3344,6 +3420,26 @@ function Library:CreateSettingsPage(window, watermark, keybindList)
 		})
 	end
 
+	-- Theme JSON: export the live theme / import a pasted one (portable across hubs)
+	local jsonSection = tab:Section({ Name = "Theme JSON", Side = 1 })
+	local jsonBox = jsonSection:Textbox({ Name = "Theme JSON", Flag = "ThemeJSON",
+		Placeholder = "Paste theme JSON, then Import…" })
+	local jrow = jsonSection:Button()
+	jrow:Add("Export", function()
+		local json = Library:ExportTheme()
+		jsonBox:Set(json)
+		if setclipboard then pcall(setclipboard, json) end
+		Library:Notification({ Title = "Theme", Description = "Exported to the box + clipboard.", Type = "success", Duration = 4 })
+	end)
+	jrow:Add("Import", function()
+		local ok, err = Library:ImportTheme(jsonBox:Get())
+		if ok then
+			Library:Notification({ Title = "Theme", Description = "Theme imported.", Type = "success", Duration = 4 })
+		else
+			Library:Notification({ Title = "Theme", Description = "Import failed: " .. tostring(err), Type = "error", Duration = 5 })
+		end
+	end)
+
 	-- Configs
 	if HasFileSystem then
 		local cfgSection = tab:Section({ Name = "Configs", Side = 2 })
@@ -3419,6 +3515,8 @@ function Library:CreateSettingsPage(window, watermark, keybindList)
 		Default = Config.Scale, Callback = function(v) ApplyScale(v) end })
 	settingsSection:Slider({ Name = "UI transparency", Flag = "UITransparency", Min = 0, Max = 1, Decimals = 0.01,
 		Default = Config.Transparency, Suffix = "", Callback = function(v) ApplyTransparency(v) end })
+	settingsSection:Slider({ Name = "Glow intensity", Flag = "GlowIntensity", Min = 0, Max = 1, Decimals = 0.01,
+		Default = Config.GlowIntensity, Suffix = "", Callback = function(v) ApplyGlowIntensity(v) end })
 	settingsSection:Slider({ Name = "Notif. duration", Flag = "NotifDuration", Min = 1, Max = 15, Decimals = 0.5, Suffix = "s",
 		Default = Config.NotificationDuration, Callback = function(v) Config.NotificationDuration = v end })
 	settingsSection:Toggle({ Name = "Notif. sounds", Flag = "NotifSounds", Default = Config.NotificationSound ~= "",
