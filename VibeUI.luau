@@ -3483,6 +3483,27 @@ function Library:CreateSettingsPage(window, watermark, keybindList)
 		end)
 	end
 
+	-- Config JSON: export/import all flags as JSON (works without filesystem too,
+	-- via clipboard) so configs are portable across hubs and executors.
+	local cjsonSection = tab:Section({ Name = "Config JSON", Side = 2 })
+	local cjsonBox = cjsonSection:Textbox({ Name = "Config JSON", Flag = "ConfigJSON",
+		Placeholder = "Paste config JSON, then Import…" })
+	local cjrow = cjsonSection:Button()
+	cjrow:Add("Export", function()
+		local json = Library:GetConfig()
+		cjsonBox:Set(json)
+		if setclipboard then pcall(setclipboard, json) end
+		Library:Notification({ Title = "Config", Description = "Exported to the box + clipboard.", Type = "success", Duration = 4 })
+	end)
+	cjrow:Add("Import", function()
+		local ok, err = Library:LoadConfig(cjsonBox:Get())
+		if ok then
+			Library:Notification({ Title = "Config", Description = "Config imported.", Type = "success", Duration = 4 })
+		else
+			Library:Notification({ Title = "Config", Description = "Import failed: " .. tostring(err), Type = "error", Duration = 5 })
+		end
+	end)
+
 	-- Settings
 	local settingsSection = tab:Section({ Name = "Interface", Side = 2 })
 	if watermark then
