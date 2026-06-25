@@ -2624,9 +2624,13 @@ function Library:Watermark(text: string)
 	}
 end
 
-function Library:KeybindList()
+--- Floating keybind list. opts: { Title = "Keybinds", ShowTitle = true, RichText = false }.
+function Library:KeybindList(opts)
+	opts = opts or {}
 	local list = {}
 	Library.KeyList = list
+	local richText = opts.RichText and true or false
+	local entries: { TextLabel } = {}
 	-- auto-sizes to its widest entry (min width keeps it tidy when empty)
 	local frame = Create("Frame", { Parent = Holder, AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 12, 0.5, 55), Size = UDim2.fromOffset(120, 0), BorderSizePixel = 2,
@@ -2638,19 +2642,21 @@ function Library:KeybindList()
 	MakeDraggable(frame, frame, LibMaid)
 	Create("UIPadding", { Parent = frame, PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 8),
 		PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) })
-	MakeText(frame, "Keybinds", { Size = UDim2.new(0, 0, 0, 14), AutomaticSize = Enum.AutomaticSize.X,
-		TextXAlignment = Enum.TextXAlignment.Left })
-	Create("Frame", { Parent = frame, Position = UDim2.fromOffset(0, 0), Size = UDim2.new(1, 0, 0, 1),
+	local titleLabel = MakeText(frame, opts.Title or "Keybinds", { Size = UDim2.new(0, 0, 0, 14),
+		AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Left,
+		FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 13, RichText = richText })
+	local divider = Create("Frame", { Parent = frame, Position = UDim2.fromOffset(0, 16), Size = UDim2.new(1, 0, 0, 1),
 		AnchorPoint = Vector2.new(0, 0), BorderSizePixel = 0, BackgroundColor3 = Color3.fromRGB(202, 243, 255),
 		ThemeTag = { BackgroundColor3 = "Accent" } })
-	local body = Create("Frame", { Parent = frame, BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 18),
+	local body = Create("Frame", { Parent = frame, BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 20),
 		Size = UDim2.new(0, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.XY })
 	Create("UIListLayout", { Parent = body, SortOrder = Enum.SortOrder.LayoutOrder })
 
 	function list:Add(key, name, mode)
 		local entry = MakeText(body, ("%s - %s (%s)"):format(key, name, mode), {
-			Size = UDim2.new(0, 0, 0, 15), AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(0, 0, 0, 15), AutomaticSize = Enum.AutomaticSize.X, RichText = richText,
 			TextXAlignment = Enum.TextXAlignment.Left, Visible = false, TextTransparency = 1 })
+		entries[#entries + 1] = entry
 		local item = { Instance = entry }
 		-- Entry is shown whenever a key is bound (not "None"); it does NOT hide when
 		-- the bind is inactive. SetStatus only changes the highlight colour.
@@ -2667,6 +2673,21 @@ function Library:KeybindList()
 		return item
 	end
 	function list:SetVisibility(b) frame.Visible = b end
+	function list:SetTitle(t) titleLabel.Text = tostring(t) end
+	--- Show/hide the title (and its divider); the body shifts up when hidden.
+	function list:SetTitleVisible(b)
+		b = b and true or false
+		titleLabel.Visible = b
+		divider.Visible = b
+		body.Position = UDim2.fromOffset(0, b and 20 or 0)
+	end
+	--- Toggle RichText on the title + all entries (so names can use <b>, <font> …).
+	function list:SetRichText(b)
+		richText = b and true or false
+		titleLabel.RichText = richText
+		for _, e in entries do e.RichText = richText end
+	end
+	if opts.ShowTitle == false then list:SetTitleVisible(false) end
 	return list
 end
 
@@ -3513,6 +3534,12 @@ function Library:CreateSettingsPage(window, watermark, keybindList)
 	if keybindList then
 		settingsSection:Toggle({ Name = "Keybind list", Flag = "ShowKeybinds", Default = true,
 			Callback = function(v) keybindList:SetVisibility(v) end })
+		settingsSection:Toggle({ Name = "Show keybind title", Flag = "KeybindTitleShown", Default = true,
+			Callback = function(v) keybindList:SetTitleVisible(v) end })
+		settingsSection:Toggle({ Name = "Keybind rich text", Flag = "KeybindRichText", Default = false,
+			Callback = function(v) keybindList:SetRichText(v) end })
+		settingsSection:Textbox({ Name = "Keybind title", Flag = "KeybindTitle", Placeholder = "Keybinds",
+			Callback = function(v) keybindList:SetTitle((v and v ~= "") and v or "Keybinds") end })
 	end
 	settingsSection:Toggle({ Name = "Custom cursor", Flag = "CustomCursor", Default = Config.CustomCursor,
 		Callback = function(v)
