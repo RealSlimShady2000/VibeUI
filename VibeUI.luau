@@ -249,8 +249,24 @@ local Input = {} do
 	local listeners = { Began = {}, Changed = {}, Ended = {} }
 
 	local function fire(kind, input, gpe)
-		for fn in listeners[kind] do
-			task.spawn(fn, input, gpe)
+		if kind == "Changed" then
+			-- High-frequency (fires every frame the mouse/touch moves) and every
+			-- listener here is an internal, non-yielding handler (drag, slider,
+			-- tooltip, cursor). Call them directly — spawning a thread per listener
+			-- per move event was pure overhead and scaled with element count.
+			-- Snapshot first so a handler that adds/removes listeners (e.g. a slider
+			-- callback rebuilding UI) can't corrupt the iteration.
+			local snap, n = {}, 0
+			for fn in listeners[kind] do n += 1; snap[n] = fn end
+			for i = 1, n do
+				local ok, err = pcall(snap[i], input, gpe)
+				if not ok then warn("[VibeUI] input handler error: " .. tostring(err)) end
+			end
+		else
+			-- Began/Ended fire user keybind callbacks, which may yield — isolate each.
+			for fn in listeners[kind] do
+				task.spawn(fn, input, gpe)
+			end
 		end
 	end
 
@@ -2711,15 +2727,17 @@ function Library:Ticker(opts)
 		TextXAlignment = Enum.TextXAlignment.Left })
 
 	local paused, x = false, nil
-	LibMaid:GiveTask(RunService.RenderStepped:Connect(function(dt)
-		if paused or not bar.Visible then return end
+	local scrollConn
+	scrollConn = RunService.RenderStepped:Connect(function(dt)
+		if paused or not bar.Parent or not bar.Visible then return end
 		local areaW = scrollArea.AbsoluteSize.X
 		local w = label.AbsoluteSize.X
 		if x == nil then x = areaW end
 		x = x - speed * dt
 		if x <= -w then x = areaW end -- wrap back to the right once fully scrolled off
 		label.Position = UDim2.new(0, math.floor(x), 0.5, 0)
-	end))
+	end)
+	LibMaid:GiveTask(scrollConn)
 
 	function ticker:SetMessages(t) messages = t; label.Text = table.concat(t, sep); x = scrollArea.AbsoluteSize.X end
 	function ticker:SetText(t) ticker:SetMessages({ t }) end
@@ -2728,7 +2746,7 @@ function Library:Ticker(opts)
 	function ticker:Pause() paused = true end
 	function ticker:Resume() paused = false end
 	function ticker:SetVisibility(b) bar.Visible = b end
-	function ticker:Destroy() bar:Destroy() end
+	function ticker:Destroy() if scrollConn then scrollConn:Disconnect() end bar:Destroy() end
 	return ticker
 end
 
