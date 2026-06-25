@@ -2471,8 +2471,11 @@ function Library:Window(data: WindowConfig?)
 					Tween.To(bd.label, { TextColor3 = on and Theme.Values.Accent or Theme.Values.Text })
 				end
 			end
-			-- fade the page as one layer; element transparencies are left intact so
-			-- stateful widgets (e.g. ticked toggles) never blank after a switch.
+			-- Fade the incoming page in as one layer (GroupTransparency); element
+			-- transparencies are left intact so stateful widgets never blank.
+			-- The OUTGOING page is hidden *instantly* — a visible fade-out left the
+			-- old page overlapping the new one, and fast switching stacked several
+			-- lingering pages ("extra second to vanish").
 			if on then
 				window.CurrentTab = tab
 				page.Parent = content
@@ -2480,10 +2483,9 @@ function Library:Window(data: WindowConfig?)
 				page.GroupTransparency = 1
 				Tween.To(page, { GroupTransparency = 0 }, Tween.Info(window.FadeTime))
 			else
-				local t = Tween.To(page, { GroupTransparency = 1 }, Tween.Info(window.FadeTime))
-				t.Completed:Once(function()
-					if not tab.Active then page.Visible = false; page.Parent = UnusedHolder end
-				end)
+				page.Visible = false
+				page.Parent = UnusedHolder
+				page.GroupTransparency = 0 -- reset for the next time it's shown
 			end
 		end
 
