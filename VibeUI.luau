@@ -849,18 +849,19 @@ local OpenPopups = {} -- popup -> true (exclusive popups currently open)
 local OpenPopupList = {} -- popup -> anchor; ALL open popups, for one shared outside-click handler
 local hideTooltip: (() -> ())? = nil -- set by the Tooltip block; hides any visible tooltip
 
-local CursorBg
-if Config.CustomCursor then
-	CursorBg = Create("Frame", {
-		Parent = Holder, BackgroundTransparency = 1, ZIndex = 9999,
-		Size = UDim2.fromOffset(16, 16), Visible = false,
-	})
-	Create("ImageLabel", {
-		Parent = CursorBg, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
-		Image = "rbxassetid://76631660114196", ZIndex = 9999,
-		ThemeTag = { ImageColor3 = "Accent" },
-	})
-end
+-- Always created (hidden) so the Settings "Custom cursor" toggle can show it at
+-- runtime. Previously it only existed if Config.CustomCursor was true *before* the
+-- window was built, so flipping the toggle did nothing (and still hid the system
+-- cursor → no cursor at all).
+local CursorBg = Create("Frame", {
+	Parent = Holder, BackgroundTransparency = 1, ZIndex = 9999,
+	Size = UDim2.fromOffset(16, 16), Visible = false,
+})
+Create("ImageLabel", {
+	Parent = CursorBg, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1),
+	Image = "rbxassetid://76631660114196", ZIndex = 9999,
+	ThemeTag = { ImageColor3 = "Accent" },
+})
 
 -- Open popups follow their anchor each frame (negligible when none are open;
 -- needed so popups track the window while it is dragged).
@@ -871,14 +872,12 @@ LibMaid:GiveTask(RunService.RenderStepped:Connect(function()
 end))
 
 -- Custom cursor follows the pointer on movement only (event-driven, opt-in).
-if CursorBg then
-	LibMaid:GiveTask(Input.On("Changed", function(input)
-		if CursorBg.Visible and Input.isMove(input) then
-			local m = MousePos()
-			CursorBg.Position = UDim2.fromOffset(m.X, m.Y)
-		end
-	end))
-end
+LibMaid:GiveTask(Input.On("Changed", function(input)
+	if CursorBg.Visible and Input.isMove(input) then
+		local m = MousePos()
+		CursorBg.Position = UDim2.fromOffset(m.X, m.Y)
+	end
+end))
 
 local function CloseAllPopups(except)
 	for popup in OpenPopups do
@@ -2249,7 +2248,7 @@ function Library:Window(data: WindowConfig?)
 	end
 	applyLayout(layoutMode)
 
-	if CursorBg then CursorBg.Visible = true end
+	CursorBg.Visible = Config.CustomCursor
 
 	-- window controls: minimize (collapse to title bar) + maximize (toggle large)
 	local minBtn = controlButton(1)
@@ -2296,7 +2295,7 @@ function Library:Window(data: WindowConfig?)
 		local last = Tween.Fade(root, open, Config.FadeSpeed)
 		local function done()
 			root.Visible = self.IsOpen
-			if CursorBg then CursorBg.Visible = self.IsOpen end
+			CursorBg.Visible = Config.CustomCursor and self.IsOpen
 			UserInputService.MouseIconEnabled = (not Config.CustomCursor) or (not self.IsOpen)
 			-- re-assert global transparency in case it was changed mid-fade
 			if self.IsOpen and Config.Transparency > 0 then ApplyTransparency(Config.Transparency) end
@@ -3401,8 +3400,12 @@ function Library:CreateSettingsPage(window, watermark, keybindList)
 	settingsSection:Toggle({ Name = "Custom cursor", Flag = "CustomCursor", Default = Config.CustomCursor,
 		Callback = function(v)
 			Config.CustomCursor = v
-			if CursorBg then CursorBg.Visible = v end
-			UserInputService.MouseIconEnabled = not v
+			CursorBg.Visible = v and window.IsOpen
+			if CursorBg.Visible then -- snap to the pointer now so it appears immediately
+				local m = MousePos()
+				CursorBg.Position = UDim2.fromOffset(m.X, m.Y)
+			end
+			UserInputService.MouseIconEnabled = (not v) or (not window.IsOpen)
 		end })
 	settingsSection:Dropdown({ Name = "Notifications", Flag = "NotifSide",
 		Items = { "BottomRight", "BottomLeft", "TopRight", "TopLeft" }, Default = Config.NotificationSide,
