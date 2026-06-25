@@ -3028,6 +3028,7 @@ end
 
 --- A modern key-system gate. opts:
 ---   Title          window/hub name (accent, bold)
+---   TitleColor     Color3 to pin the title colour (e.g. gold over green buttons)
 ---   Brand          small line under the title (e.g. "yoursite.com")
 ---   Badge          accent pill next to the brand (e.g. "FREE")
 ---   Logo           rbxassetid (no prefix) shown above the title
@@ -3038,9 +3039,12 @@ end
 ---   SaveKey        bool — remember a valid key on disk
 ---   Links          { {Text=, Url=} } — stacked "Get Key" buttons (copy the url)
 ---   Progress       false to hide the checkpoint progress bar
+---   Blocking       true  → yields the caller until a valid key, then returns true
 ---   Validate       function(key) -> boolean[, message]   (HTTP auth / whitelist)
 ---   OnSuccess      function(key)        OnFail = function()
---- Returns a handle: :Close() :SetProgress(0..1) :SetStatus(text) :SetNote(text).
+--- Non-blocking returns a handle: :Close() :SetProgress(0..1) :SetStatus(text) :SetNote(text).
+--- Blocking returns `true` once a key is accepted — gate a hub in one line:
+---   if not VibeUI:KeySystem({ Blocking = true, ... }) then return end
 --- If SaveKey and a stored key validates, it succeeds instantly.
 function Library:KeySystem(opts)
 	opts = opts or {}
@@ -3062,11 +3066,13 @@ function Library:KeySystem(opts)
 			ThemeTag = { ImageColor3 = "Accent" } })
 	end
 
-	-- title (accent, wraps so a long hub name never clips)
+	-- title (accent by default; TitleColor pins a custom colour, e.g. gold over
+	-- green buttons). Wraps so a long hub name never clips.
 	MakeText(panel, opts.Title or "Key System", { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center,
 		FontFace = Font.fromEnum(Enum.Font.GothamBold), TextSize = 22,
-		TextColor3 = Theme.Values.Accent, ThemeTag = { TextColor3 = "Accent" } })
+		TextColor3 = opts.TitleColor or Theme.Values.Accent,
+		ThemeTag = opts.TitleColor and {} or { TextColor3 = "Accent" } })
 
 	-- brand line + optional accent pill badge (rendered, so no broken glyphs)
 	if (opts.Brand and opts.Brand ~= "") or opts.Badge then
@@ -3128,6 +3134,7 @@ function Library:KeySystem(opts)
 	FocusHighlight(input, boxStroke, maid)
 
 	local handle = {}
+	local accepted = false
 	local function validate(key)
 		key = (key or ""):gsub("^%s+", ""):gsub("%s+$", "")
 		if key == "" then
@@ -3136,6 +3143,7 @@ function Library:KeySystem(opts)
 		end
 		local ok, result, msg = pcall(opts.Validate or function() return false end, key)
 		if ok and result then
+			accepted = true
 			if opts.SaveKey and HasFileSystem then pcall(writefile, keyFile, key) end
 			setProgress(1)
 			Library:Notification({ Title = "Key System", Description = "Key accepted — welcome!", Type = "success", Duration = 4 })
@@ -3197,6 +3205,14 @@ function Library:KeySystem(opts)
 	-- try a previously-saved key
 	if opts.SaveKey and HasFileSystem and isfile(keyFile) then
 		task.defer(function() validate(readfile(keyFile)) end)
+	end
+
+	-- Blocking gate: yield the caller until a valid key is entered, then return
+	-- true. Lets you gate a whole hub in one line:
+	--   if not VibeUI:KeySystem({ Blocking = true, ... }) then return end
+	if opts.Blocking then
+		while not accepted do task.wait(0.05) end
+		return true
 	end
 	return handle
 end
