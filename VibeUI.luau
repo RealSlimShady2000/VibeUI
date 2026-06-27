@@ -1420,7 +1420,11 @@ function Components.Slider(data)
 	local maid = data.Maid
 	local self = { Value = data.Min or 0, Flag = data.Flag }
 	local minV, maxV = data.Min or 0, data.Max or 100
+	-- "Decimals" is the rounding STEP (1 = integers, 0.1 = tenths). 0/negative is
+	-- invalid: `0 or 1` keeps 0 in Lua, and 1/0 = inf → floor(x*inf)/inf = NaN.
+	-- Fall back to integer steps so Decimals = 0 just means "whole numbers".
 	local decimals, suffix = data.Decimals or 1, data.Suffix or ""
+	if type(decimals) ~= "number" or decimals <= 0 then decimals = 1 end
 
 	local container = Create("Frame", { Parent = data.Parent, BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, 28), BorderSizePixel = 0 })
